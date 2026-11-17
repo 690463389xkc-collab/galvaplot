@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+.DS_Store
+# never commit real test data by accident
+*.cex
+*.icex
+*.ndax
+*.nda
+!tests/data/*.cex

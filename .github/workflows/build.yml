@@ -1,0 +1,134 @@
+name: test-and-build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+
+  package:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r requirements.txt "pyinstaller>=6.5"
+      - name: Read version
+        id: ver
+        shell: bash
+        run: echo "version=$(python -c 'import galvaplot; print(galvaplot.__version__)')" >> "$GITHUB_OUTPUT"
+      - run: pyinstaller --noconfirm galvaplot.spec
+
+      # ---------------- Windows: installer + portable zip ----------------
+      - name: Self-test packaged app (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          GALVAPLOT_SELFTEST: ${{ github.workspace }}\selftest
+        run: |
+          $p = Start-Process -FilePath dist\GalvaPlot\GalvaPlot.exe -Wait -PassThru
+          Get-Content selftest\selftest.txt
+          if ($p.ExitCode -ne 0) { exit 1 }
+      - name: Portable zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist\GalvaPlot -DestinationPath "dist\GalvaPlot-${{ steps.ver.outputs.version }}-Windows-x64-portable.zip"
+      - name: Build installer (Windows, Inno Setup)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DMyAppVersion=${{ steps.ver.outputs.version }}" installer\galvaplot.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Test installer - silent install, self-test, uninstall (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          GALVAPLOT_SELFTEST: ${{ github.workspace }}\selftest_installed
+        run: |
+          $setup = "dist\GalvaPlot-${{ steps.ver.outputs.version }}-Windows-Setup.exe"
+          $dir = Join-Path $env:RUNNER_TEMP "GalvaPlotInstall"
+          $i = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CURRENTUSER", "/NORESTART", "/DIR=$dir" -Wait -PassThru
+          if ($i.ExitCode -ne 0) { Write-Error "installer exit code $($i.ExitCode)"; exit 1 }
+          $r = Start-Process -FilePath (Join-Path $dir "GalvaPlot.exe") -Wait -PassThru
+          Get-Content selftest_installed\selftest.txt
+          if ($r.ExitCode -ne 0) { exit 1 }
+          $u = Start-Process -FilePath (Join-Path $dir "unins000.exe") -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES" -Wait -PassThru
+          if ($u.ExitCode -ne 0) { Write-Error "uninstaller exit code $($u.ExitCode)"; exit 1 }
+
+      # ---------------- macOS: drag-to-install disk image ----------------
+      - name: Self-test packaged app (macOS)
+        if: runner.os == 'macOS'
+        env:
+          QT_QPA_PLATFORM: offscreen
+          GALVAPLOT_SELFTEST: ${{ github.workspace }}/selftest
+        run: |
+          dist/GalvaPlot.app/Contents/MacOS/GalvaPlot
+          cat selftest/selftest.txt
+      - name: Build DMG (macOS)
+        if: runner.os == 'macOS'
+        run: bash tools/make_dmg.sh dist/GalvaPlot.app "dist/GalvaPlot-${{ steps.ver.outputs.version }}-macOS-AppleSilicon.dmg"
+      - name: Test DMG - mount, copy app out, self-test (macOS)
+        if: runner.os == 'macOS'
+        env:
+          QT_QPA_PLATFORM: offscreen
+          GALVAPLOT_SELFTEST: ${{ github.workspace }}/selftest_dmg
+        run: |
+          mnt="$(mktemp -d)"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mnt" dist/GalvaPlot-*-macOS-AppleSilicon.dmg
+          test -L "$mnt/Applications"
+          ditto "$mnt/GalvaPlot.app" "$RUNNER_TEMP/GalvaPlot.app"
+          hdiutil detach "$mnt"
+          "$RUNNER_TEMP/GalvaPlot.app/Contents/MacOS/GalvaPlot"
+          cat selftest_dmg/selftest.txt
+
+      # ---------------- upload ----------------
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selftest-${{ runner.os }}
+          path: selftest*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GalvaPlot-${{ steps.ver.outputs.version }}-${{ runner.os }}
+          if-no-files-found: error
+          path: |
+            dist/*.exe
+            dist/*.zip
+            dist/*.dmg
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          files: |
+            dist/*.exe
+            dist/*.zip
+            dist/*.dmg
