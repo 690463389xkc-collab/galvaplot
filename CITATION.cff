@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If GalvaPlot helped your work, please cite it as below."
+title: "GalvaPlot: drag-and-drop plotting for battery test files (LAND .cex, Neware .ndax)"
+type: software
+authors:
+  - alias: "690463389xkc-collab"
+version: "0.1.0"
+date-released: "2026-11-18"
+license: MIT
+repository-code: "https://github.com/690463389xkc-collab/galvaplot"
+url: "https://github.com/690463389xkc-collab/galvaplot"
+abstract: >-
+  Desktop application for battery researchers: reads LAND .cex and Neware .ndax
+  raw files and produces voltage profiles, cycling metrics, voltage-time and
+  dQ/dV figures for presentations and papers, with Excel export of the plotted data.
+keywords:
+  - battery
+  - electrochemistry
+  - battery testing
+  - LAND
+  - Neware
+  - dQ/dV
+  - data visualization

@@ -4,7 +4,14 @@
 
 <p align="center">把蓝电（LAND）<code>.cex</code> 或新威（Neware）<code>.ndax</code> 源文件拖进窗口，一键画出可以直接放进 PPT 和论文的电化学图。</p>
 
-<p align="center"><img src="docs/screenshot.png" width="900" alt="GalvaPlot 界面截图"></p>
+<p align="center">
+  <a href="https://github.com/690463389xkc-collab/galvaplot/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/690463389xkc-collab/galvaplot?label=%E4%B8%8B%E8%BD%BD&color=2f5f9e"></a>
+  <img alt="下载量" src="https://img.shields.io/github/downloads/690463389xkc-collab/galvaplot/total?label=downloads">
+  <img alt="平台" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-555">
+  <img alt="许可证" src="https://img.shields.io/github/license/690463389xkc-collab/galvaplot">
+</p>
+
+<p align="center"><img src="docs/demo.gif" width="900" alt="GalvaPlot 演示：拖入文件、改名称、切换图类型、单独查看子图、复制到 PPT"></p>
 
 ## 适合谁
 
@@ -151,6 +158,10 @@ tests/                  单元测试
 ## 参与贡献
 
 欢迎提交 issue 和 pull request，尤其是：其他型号或软件版本的 `.cex` / `.ndax` 文件适配、新的图类型、英文界面。提交代码前请先跑一遍测试。
+
+## 引用
+
+如果 GalvaPlot 对你的研究有帮助，可以在论文的方法部分注明作图工具，例如“数据使用 GalvaPlot v0.1.0 处理和作图”。仓库页面右侧的 **Cite this repository** 提供 APA / BibTeX 格式（来自 [CITATION.cff](CITATION.cff)）。
 
 ## 许可与声明
 
