@@ -21,7 +21,7 @@ def _persistent_mpl_cache():
     try:
         os.makedirs(d, exist_ok=True)
         probe = os.path.join(d, ".write_test")
-        with open(probe, "w") as f:
+        with open(probe, "w", encoding="utf-8") as f:
             f.write("ok")
         os.remove(probe)
     except OSError:

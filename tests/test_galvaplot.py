@@ -173,7 +173,7 @@ class TestTabular(Tmp):
 
     def test_csv_english_units(self):
         p = os.path.join(self.dir, "export_en.csv")
-        with open(p, "w", newline="") as f:
+        with open(p, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
             w.writerow(["Record", "Cycle", "Step", "State", "TestTime(h)", "Voltage(V)", "Current(A)",
                         "Capacity(Ah)", "Energy(Wh)"])
@@ -201,7 +201,7 @@ class TestTabular(Tmp):
 
     def test_no_record_table(self):
         p = os.path.join(self.dir, "cycles_only.csv")
-        with open(p, "w", newline="") as f:
+        with open(p, "w", newline="", encoding="utf-8") as f:
             csv.writer(f).writerows([["循环", "充电容量/mAh", "放电容量/mAh"], [1, 2, 1.9]])
         with self.assertRaises(ValueError):
             load_file(p)
