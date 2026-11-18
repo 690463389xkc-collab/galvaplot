@@ -125,6 +125,7 @@ def _selftest(app, w, files, out):
                 w.plot.set_kind(key)
                 w.plot.redraw()
                 F.save(w.plot.result, os.path.join(out, f"{key}.png"), dpi=100)
+            app.processEvents()           # let the layout settle before the screenshot
             w.grab().save(os.path.join(out, "window.png"))
         except Exception as e:  # report and fail
             print("SELFTEST FAILED:", repr(e), flush=True)
@@ -132,6 +133,16 @@ def _selftest(app, w, files, out):
         with open(os.path.join(out, "selftest.txt"), "w", encoding="utf-8") as f:
             f.write("ok\n" if ok else "failed\n")
         print("SELFTEST", "OK" if ok else "FAILED", flush=True)
+        if ok and os.environ.get("GALVAPLOT_SELFTEST_NET") and w.checker:
+            # optional: one real update check (TLS inside the packaged app); not used in CI
+            def net_done(res):
+                print("UPDATE CHECK", "OK" if res.get("ok") else "FAILED", res.get("latest") or res.get("error"),
+                      flush=True)
+                app.exit(0 if res.get("ok") else 2)
+            w.checker.finished.connect(net_done)
+            w.checker.check()
+            QTimer.singleShot(30000, lambda: app.exit(3))
+            return
         app.exit(0 if ok else 1)
 
     timer.timeout.connect(step)

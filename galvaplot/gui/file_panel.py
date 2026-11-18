@@ -51,6 +51,8 @@ class Item:
         self.color = color
         self.ls = "solid"
         self.mass = None
+        self.mass_user = False      # True once the user typed (or cleared) the mass
+        self.file_mass = None       # mass stored in the data file itself, if any
         self.visible = True
         self.loading = True
 
@@ -285,6 +287,11 @@ class FilePanel(QWidget):
             box.exec()
             return
         it.cell, it.loading = cell, False
+        fm = (cell.info or {}).get("mass_mg")
+        it.file_mass = fm if fm and fm > 0 else None
+        if it.file_mass and not it.mass_user:
+            it.mass = round(it.file_mass, 6)
+            self.message.emit(f"{it.label}：已从文件读取活性物质质量 {it.mass:g} mg（可在表格里修改）")
         self._rebuild()
         if cell.warnings:
             self.message.emit(f"{it.label}：" + "；".join(cell.warnings[:2]))
@@ -329,7 +336,7 @@ class FilePanel(QWidget):
 
             mass = QTableWidgetItem("" if it.mass is None else f"{it.mass:g}")
             mass.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            mass.setToolTip("活性物质质量（mg），用于比容量 mAh/g；不需要可留空")
+            mass.setToolTip(self._mass_tip(it))
             self.table.setItem(r, 4, mass)
         self._building = False
         self.count.setText(f"{len(self.items)} / {MAX_FILES}")
@@ -377,6 +384,14 @@ class FilePanel(QWidget):
             self._rebuild()
         self.changed.emit()
 
+    @staticmethod
+    def _mass_tip(it):
+        if it.file_mass and not it.mass_user:
+            return (f"从文件读取：{it.file_mass:g} mg（测试软件里设置的活性物质质量）\n"
+                    "用于比容量 mAh/g；双击可修改")
+        return ("活性物质质量（mg），用于比容量 mAh/g；不需要可留空"
+                + (f"\n文件里记录的是 {it.file_mass:g} mg，右键可恢复" if it.file_mass else ""))
+
     def _item_changed(self, cell_item):
         if self._building:
             return
@@ -398,12 +413,16 @@ class FilePanel(QWidget):
             try:
                 v = float(txt) if txt else None
                 it.mass = v if (v is None or v > 0) else None
-            except ValueError:
-                it.mass = None
+                it.mass_user = True
                 self._building = True
-                cell_item.setText("")
+                cell_item.setToolTip(self._mass_tip(it))
+                self._building = False
+            except ValueError:            # keep the previous value
+                self._building = True
+                cell_item.setText("" if it.mass is None else f"{it.mass:g}")
                 self._building = False
                 self.message.emit("质量请填数字（单位 mg）")
+                return
         else:
             return
         self._remember(it)
@@ -416,10 +435,18 @@ class FilePanel(QWidget):
         it = self.items[r]
         m = QMenu(self)
         m.addAction("恢复原文件名", lambda: self._set(it, "label", it.default, rebuild=True))
+        if it.file_mass:
+            m.addAction(f"使用文件里的质量（{it.file_mass:g} mg）", lambda: self._use_file_mass(it))
         m.addAction("在文件夹中显示", lambda: self._reveal(it.path))
         m.addSeparator()
         m.addAction("移除", lambda: self._remove(r))
         m.exec(self.table.viewport().mapToGlobal(pos))
+
+    def _use_file_mass(self, it):
+        it.mass, it.mass_user = round(it.file_mass, 6), False
+        self._remember(it)
+        self._rebuild()
+        self.changed.emit()
 
     def _reveal(self, path):
         from PySide6.QtCore import QUrl
@@ -467,7 +494,8 @@ class FilePanel(QWidget):
         return "files/" + hashlib.md5(path.encode("utf-8")).hexdigest()
 
     def _remember(self, it):
-        d = dict(label=it.label, color=it.color, ls=it.ls, mass=it.mass)
+        d = dict(label=it.label, color=it.color, ls=it.ls,
+                 mass=it.mass if it.mass_user else None, mass_user=it.mass_user)
         self.settings.setValue(self._key(it.path), json.dumps(d))
 
     def _restore(self, it):
@@ -480,7 +508,9 @@ class FilePanel(QWidget):
             return
         it.label = d.get("label") or it.label
         it.ls = d.get("ls") if d.get("ls") in ("solid", "dashed", "dotted", "dashdot") else it.ls
-        it.mass = d.get("mass")
+        # v0.1.0 saved no flag: a stored number was typed by the user, None means "not set"
+        it.mass_user = bool(d.get("mass_user", d.get("mass") is not None))
+        it.mass = d.get("mass") if it.mass_user else None
         col = d.get("color")
         if col and col not in {i.color for i in self.items}:
             it.color = col

@@ -83,6 +83,8 @@ QCheckBox::indicator:checked:disabled {{ background: #9fb3cf; border-color: #9fb
 QMenu {{ background: white; border: 1px solid {BORDER}; padding: 4px; }}
 QMenu::item {{ padding: 4px 18px 4px 8px; border-radius: 4px; }}
 QMenu::item:selected {{ background: #e7eef8; color: {TEXT}; }}
+QMenu::item:disabled {{ color: #6b7280; }}
+QMenu::separator {{ height: 1px; background: {BORDER}; margin: 4px 6px; }}
 
 QTableWidget {{ border: none; background: white; gridline-color: transparent;
     selection-background-color: #e7eef8; selection-color: {TEXT}; outline: 0; }}

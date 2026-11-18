@@ -30,7 +30,8 @@ def _ndc(ftype, page_type, rec_len, records: bytes, version=17):
 
 
 def write_ndax(path, steps, start="2026-08-16 17:41:17", loop_starts=(), version=17, step_xml=True,
-               unix0=1786873277):
+               unix0=1786873277, scq=None):
+    """scq: active mass as BTS stores it in Step.xml <Head_Info><SCQ> (micrograms)."""
     data, run, step = bytearray(), bytearray(), bytearray()
     idx, t0_ms = 1, 0
     first = True
@@ -69,7 +70,11 @@ def write_ndax(path, steps, start="2026-08-16 17:41:17", loop_starts=(), version
         if step_xml:
             body = "".join(f'<Step{n} Step_ID="{n}" Step_Type="5"><Limit><Other><Start_Step Value="{ls}" />'
                            f'<Cycle_Count Value="10" /></Other></Limit></Step{n}>' for n, ls in enumerate(loop_starts, 90))
-            z.writestr("Step.xml", f'<?xml version="1.0" encoding="utf-8"?><root><config><Step_Info>{body}</Step_Info></config></root>')
+            head = ('<Head_Info><Operate Value="65" /><Scale Value="1" /><RateType Value="102" />'
+                    + (f'<SCQ Value="{scq}" /><SCQ_F Value="{scq * 1e-8:.3G}" />' if scq else "")
+                    + '</Head_Info>')
+            z.writestr("Step.xml", f'<?xml version="1.0" encoding="GB2312"?><root><config>{head}<Step_Info>{body}'
+                                   f'</Step_Info></config></root>'.encode("gb18030"))
         z.writestr("VersionInfo.xml", '<?xml version="1.0" encoding="utf-8"?><root/>')
 
 

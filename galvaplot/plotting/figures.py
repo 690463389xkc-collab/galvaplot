@@ -77,6 +77,7 @@ class FigureResult:
     notes: list
     rc: dict
     all_panels: list = field(default_factory=list)   # [(key, title)] of every possible sub-plot
+    axes: list = field(default_factory=list)         # visible axes, same order as panels
 
 
 MAX_PANELS = 12
@@ -396,6 +397,42 @@ def legend_line(s: Series, opts):
     return Line2D([], [], **line_kw(s, opts))
 
 
+CYCLE_LS = ["-", "--", ":", "-."]
+
+
+def tint(color, f):
+    """Mix a colour with white: f = 1 keeps it, f -> 0 makes it pale."""
+    from matplotlib.colors import to_hex, to_rgb
+    c = np.array(to_rgb(color))
+    return to_hex(1 - (1 - c) * f)
+
+
+def cycle_styles(n):
+    """How cycles are told apart when all cells share one panel ("所有圈+所有电池"): line
+    style for up to 4 cycles, otherwise shades of the cell colour (pale = early, full = late)."""
+    if n <= len(CYCLE_LS):
+        return [(ls, 1.0) for ls in CYCLE_LS[:n]]
+    return [("-", 0.28 + 0.72 * k / (n - 1)) for k in range(n)]
+
+
+def overlay_legend(use, cycles, opts):
+    """Legend for the all-in-one panel: one entry per cell (colour) + one per cycle (style)."""
+    styles = cycle_styles(len(cycles))
+    lw = opts["line_width"]
+    handles, labels = [], []
+    if len(use) > 1 or len(cycles) == 1:
+        handles += [Line2D([], [], color=s.color, lw=lw) for s in use]
+        labels += [rich(s.label) for s in use]
+    if len(cycles) > 1:
+        base = use[0].color if len(use) == 1 else "#3a3a3a"
+        pairs = list(zip(cycles, styles))
+        if len(pairs) > 6:                 # shades: first and last are enough (pale -> full)
+            pairs = [pairs[0], pairs[-1]]
+        handles += [Line2D([], [], color=tint(base, f), ls=ls, lw=lw) for _, (ls, f) in pairs]
+        labels += [cycle_title(opts, c) for c, _ in pairs]
+    return handles, labels
+
+
 def legend_marker(s: Series, opts):
     return Line2D([], [], **marker_kw(s, opts, 10))
 
@@ -421,7 +458,10 @@ def fig_profiles(series, opts):
             facs[id(s)] = f
     use = [s for s in series if id(s) in facs]
     by_cell = opts["p_arrange"] == "by_cell"
-    if by_cell:
+    overlay = opts["p_arrange"] == "all"
+    if overlay:
+        n, allp = 1, []
+    elif by_cell:
         cells_p, allp = select_panels(use, lambda x: "cell:" + x.cell.path, lambda x: x.label, opts, notes)
         n = len(cells_p)
     else:
@@ -432,7 +472,27 @@ def fig_profiles(series, opts):
     handles, labels = [], []
     colors = ramp(len(cycles))
     missing = []
-    if by_cell:
+    if overlay:
+        ax = axes[0]
+        pdata = {"title": T(opts, "All cells", "所有电池"), "xlabel": xl, "ylabel": yl, "curves": []}
+        for s in use:
+            for c, (ls, f) in zip(cycles, cycle_styles(len(cycles))):
+                got = False
+                for k in kinds:
+                    pr = A.profile(s.cell, c, k)
+                    if pr is None:
+                        continue
+                    got = True
+                    q, v = A.decimate(pr[0] * facs[id(s)], pr[1])
+                    ax.plot(q, v, color=tint(s.color, f), ls=ls, lw=opts["line_width"])
+                    pdata["curves"].append((f"{s.label} | cycle {c} {k}", pr[0] * facs[id(s)], pr[1]))
+                if not got:
+                    missing.append(f"{s.label} 第 {c} 圈")
+        panels.append(pdata)
+        handles, labels = overlay_legend(use, cycles, opts)
+        if len(cycles) > len(CYCLE_LS):
+            notes.append(f"{len(cycles)} 圈用同一颜色由浅到深区分（第 {cycles[0]} 圈最浅）")
+    elif by_cell:
         for ax, s in zip(axes, cells_p):
             pdata = {"title": s.label, "xlabel": xl, "ylabel": yl, "curves": []}
             for c, col in zip(cycles, colors):
@@ -623,7 +683,10 @@ def fig_dqdv(series, opts):
             facs[id(s)] = f
     use = [s for s in series if id(s) in facs]
     by_cell = opts["d_arrange"] == "by_cell"
-    if by_cell:
+    overlay = opts["d_arrange"] == "all"
+    if overlay:
+        n, allp = 1, []
+    elif by_cell:
         cells_p, allp = select_panels(use, lambda x: "cell:" + x.cell.path, lambda x: x.label, opts, notes)
         n = len(cells_p)
     else:
@@ -643,7 +706,25 @@ def fig_dqdv(series, opts):
         x, y = A.dqdv(pr[0] * facs[id(s)], pr[1], dv, sm)
         return (x, y) if len(x) else None
 
-    if by_cell:
+    if overlay:
+        ax = axes[0]
+        pdata = {"title": T(opts, "All cells", "所有电池"), "xlabel": xl, "ylabel": yl, "curves": []}
+        for s in use:
+            for c, (ls, f) in zip(cycles, cycle_styles(len(cycles))):
+                got = False
+                for k in kinds:
+                    r = curve(s, c, k)
+                    if r:
+                        got = True
+                        ax.plot(r[0], r[1], color=tint(s.color, f), ls=ls, lw=opts["line_width"] * 0.8)
+                        pdata["curves"].append((f"{s.label} | cycle {c} {k}", r[0], r[1]))
+                if not got:
+                    missing.append(f"{s.label} 第 {c} 圈")
+        panels.append(pdata)
+        handles, labels = overlay_legend(use, cycles, opts)
+        if len(cycles) > len(CYCLE_LS):
+            notes.append(f"{len(cycles)} 圈用同一颜色由浅到深区分（第 {cycles[0]} 圈最浅）")
+    elif by_cell:
         for ax, s in zip(axes, cells_p):
             pdata = {"title": s.label, "xlabel": xl, "ylabel": yl, "curves": []}
             for c, col in zip(cycles, colors):
@@ -704,7 +785,33 @@ def build(kind, series, opts) -> FigureResult:
             fig = Figure(figsize=(o["panel_w_cm"] * CM, o["panel_h_cm"] * CM))
             FigureCanvasAgg(fig)
             return FigureResult(fig, [], ["请先添加数据文件"], rc(o["font_size"]))
-        return BUILDERS[kind](series, o)
+        res = BUILDERS[kind](series, o)
+    res.axes = [ax for ax in res.fig.axes if ax.get_visible()]
+    return res
+
+
+def rich_plain(t) -> str:
+    """Text for a menu or table: mathtext markup removed."""
+    return re.sub(r"\$|\\mathrm|[{}]", "", t or "").replace("\\", "")
+
+
+def panel_text(panel) -> str:
+    """One sub-plot's data as tab-separated text (pastes into Excel / Origin): two columns
+    per curve; row 1 = curve name, row 2 = axis titles with units."""
+    clean = rich_plain
+
+    def num(v):
+        v = float(v)
+        return f"{v:.7g}" if math.isfinite(v) else ""
+
+    cols = []
+    for name, x, y in panel["curves"]:
+        cols.append([clean(name), clean(panel["xlabel"])] + [num(v) for v in x])
+        cols.append([clean(name), clean(panel["ylabel"])] + [num(v) for v in y])
+    if not cols:
+        return ""
+    n = max(len(c) for c in cols)
+    return "\n".join("\t".join(c[r] if r < len(c) else "" for c in cols) for r in range(n)) + "\n"
 
 
 def render_png(res: FigureResult, dpi: float) -> bytes:

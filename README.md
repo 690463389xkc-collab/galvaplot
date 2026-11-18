@@ -30,12 +30,15 @@
 - **曲线名称可随意改**：文件名再乱也没关系，双击改成图例里想要的名字；“精简名称”可以一键去掉日期和所有文件都有的部分
 - 下标、上标不用学 LaTeX：`AlCl_{3}` → AlCl₃，`Li^{+}` → Li⁺
 - 颜色、线型逐条可调（平行样可以同色、不同线型）
-- 容量单位：mAh、mAh/g（填活性物质质量）、mAh/cm²（填面积）、相对参考圈的 %
+- 容量单位：mAh、mAh/g（填活性物质质量；新威文件里设置过的质量会**自动读入**）、mAh/cm²（填面积）、相对参考圈的 %
+- 充放电曲线和 dQ/dV 有三种排布：每圈一个子图、每个电池一个子图、**所有圈+所有电池**（画在一张图里，颜色区分电池，线型区分圈数）
 - 图下方可写**测试条件**（正极、电解液、电流密度…），每张图都带上
 - 图中文字可选**英文或中文**
+- 在预览图的某个子图上**点右键**：单独复制这个子图的数据（直接粘贴到 Excel / Origin）、复制或保存这个子图、只显示这个子图
 - **复制图片**后直接粘贴到 PPT/Word；也可保存为 PNG（默认 300 dpi）、SVG、PDF、TIFF
 - **导出数据**为 Excel：每条曲线两列，加上每个电池的逐圈数据，可直接导入 Origin
 - **一键导出全部**：4 种图（PNG + SVG）和数据一次保存到一个文件夹
+- 右下角**检查更新**，有新版本时给出下载链接
 - 读取快：10 个 80 MB 左右的文件（共约 2000 万个数据点）约 1–2 秒读完
 
 图的风格：Arial 字体、刻度朝内带次刻度、无边框图例、多子图自动加 a/b/c 编号，配色按色觉障碍友好的顺序排列。
@@ -65,6 +68,12 @@ Intel 芯片的 Mac 和 Linux 暂时没有安装包，请用下面的“从源�
 - **360、火绒等安全软件**有时会把没有签名的 Python 程序误报为病毒。代码完全公开，可以在安全软件里选择“信任”或把安装目录加入白名单。
 - 第一次启动要等 10–30 秒（建立字体缓存，会显示提示窗口），以后打开只要 1–2 秒。
 
+### 更新到新版本
+
+点窗口右下角的“**检查更新**”。有新版本时点“下载新版本”，像第一次一样安装即可：Windows 安装包会直接替换旧版本；macOS 把新的 GalvaPlot 拖进“应用程序”时选“替换”。原来的设置、曲线名称和质量都会保留。
+
+程序默认每天启动时最多自动检查一次，只向 GitHub 查询最新版本号（不上传任何数据或文件），可以在检查更新的窗口里关掉。新版本不会自动下载或安装。
+
 ### 卸载
 
 - Windows：“设置 → 应用 → 已安装的应用”里找到 GalvaPlot 卸载；免安装版直接删除文件夹。
@@ -73,7 +82,7 @@ Intel 芯片的 Mac 和 Linux 暂时没有安装包，请用下面的“从源�
 ## 三步出图
 
 1. 把 `.cex` / `.ndax` 文件拖进窗口（或点“添加文件…”）。没有数据可以先点“示例数据”试试。
-2. 在左侧双击修改名称；需要比容量就填“质量 mg”。
+2. 在左侧双击修改名称；需要比容量就填“质量 mg”（新威文件里设置过质量的会自动填好）。
 3. 在右侧选图的类型和圈数，点“复制图片”粘贴到 PPT，或“保存图片…”。
 
 ## 计算方法（请在论文/组会中按需说明）
@@ -95,7 +104,7 @@ Intel 芯片的 Mac 和 Linux 暂时没有安装包，请用下面的“从源�
 ## 支持的文件
 
 - **蓝电 `.cex` 源文件**。`.icex` 是索引文件，不含数据，请拖同名的 `.cex`。
-- **新威 `.ndax` 源文件**（BTS 8.x 写出的版本，内部格式 v17）。旧版 `.nda` 和其他版本的 `.ndax` 暂不支持，程序会提示；可以在 BTSDA 里导出 Excel 再拖进来。辅助通道（温度等）暂不读取。
+- **新威 `.ndax` 源文件**（BTS 8.x 写出的版本，内部格式 v17）。旧版 `.nda` 和其他版本的 `.ndax` 暂不支持，程序会提示；可以在 BTSDA 里导出 Excel 再拖进来。辅助通道（温度等）暂不读取。在测试软件里设置过的活性物质质量会自动读入（来自工步文件 `Step.xml` 的 `SCQ` 项，按 µg 换算为 mg：在 15 个设置了质量的参考文件上，按这个单位换算后程序设定的电流都正好是 100 mA/g 或 200 mA/g，据此确定单位），可以在表格里修改。
 - 蓝电软件导出的 **Excel / CSV / TXT**（实验功能）：程序按表头自动识别“电压、电流、时间、容量、循环号、工步号、工步状态”等列，中英文表头都可以，单位从表头读取（V/mV、A/mA/μA、Ah/mAh、s/min/h）。请抽查几个循环的容量是否与蓝电软件一致。
 
 ### 关于文件格式（请务必读）
@@ -131,12 +140,12 @@ python -m unittest discover -s tests -v
 ```bash
 python -m pip install pyinstaller
 pyinstaller --noconfirm galvaplot.spec                                            # 程序本体（dist/）
-bash tools/make_dmg.sh dist/GalvaPlot.app dist/GalvaPlot-0.1.0-macOS-AppleSilicon.dmg   # macOS 安装镜像
+bash tools/make_dmg.sh dist/GalvaPlot.app dist/GalvaPlot-0.2.0-macOS-AppleSilicon.dmg   # macOS 安装镜像
 ```
 
-Windows 安装包用 [Inno Setup 6](https://jrsoftware.org/isinfo.php) 制作：`ISCC.exe /DMyAppVersion=0.1.0 installer\galvaplot.iss`。
+Windows 安装包用 [Inno Setup 6](https://jrsoftware.org/isinfo.php) 制作：`ISCC.exe /DMyAppVersion=0.2.0 installer\galvaplot.iss`。
 
-发布新版本：改 `galvaplot/__init__.py` 里的版本号，推送 `v*` 标签（例如 `v0.1.0`）。GitHub Actions 会在 Linux 和 Windows 上跑测试，然后自动生成 Windows 安装包、Windows 免安装 zip 和 macOS dmg，并模拟用户安装后再自检一遍（Windows：静默安装 → 运行 → 卸载；macOS：挂载 dmg → 拷出程序 → 运行），全部通过才上传到 Releases。
+发布新版本：改 `galvaplot/__init__.py` 里的版本号，推送 `v*` 标签（例如 `v0.2.0`），并在 `docs/release-notes/` 里放同名的发布说明（例如 `v0.2.0.md`）。GitHub Actions 会在 Linux 和 Windows 上跑测试，然后自动生成 Windows 安装包、Windows 免安装 zip 和 macOS dmg，并模拟用户安装后再自检一遍（Windows：静默安装 → 运行 → 卸载；macOS：挂载 dmg → 拷出程序 → 运行），全部通过才上传到 Releases。
 
 ## 项目结构
 
@@ -150,6 +159,7 @@ galvaplot/
   plotting/export.py    Excel 导出
   gui/                  PySide6 界面
   demo.py               合成示例数据（也用于测试）
+  updates.py            检查更新（只访问 GitHub Releases）
 installer/galvaplot.iss  Windows 安装包脚本（Inno Setup）
 tools/make_dmg.sh       macOS dmg 制作脚本
 tests/                  单元测试
@@ -161,7 +171,7 @@ tests/                  单元测试
 
 ## 引用
 
-如果 GalvaPlot 对你的研究有帮助，可以在论文的方法部分注明作图工具，例如“数据使用 GalvaPlot v0.1.0 处理和作图”。仓库页面右侧的 **Cite this repository** 提供 APA / BibTeX 格式（来自 [CITATION.cff](CITATION.cff)）。
+如果 GalvaPlot 对你的研究有帮助，可以在论文的方法部分注明作图工具，例如“数据使用 GalvaPlot v0.2.0 处理和作图”。仓库页面右侧的 **Cite this repository** 提供 APA / BibTeX 格式（来自 [CITATION.cff](CITATION.cff)）。
 
 ## 许可与声明
 
@@ -173,4 +183,4 @@ tests/                  单元测试
 
 ### English summary
 
-**GalvaPlot** is a small desktop app for battery researchers. Drag up to 10 raw battery-tester files (LAND `.cex`, Neware `.ndax` from BTS 8.x) into the window and get publication-style figures in one click: voltage profiles, cycling metrics (capacity, coulombic/energy efficiency, retention, average voltages, ΔV), voltage vs time and dQ/dV. Curve names are editable (with `X_{sub}` / `X^{sup}` shortcuts), figures can be copied straight into PowerPoint or saved as PNG/SVG/PDF/TIFF, and plotted data can be exported to Excel. Both readers are reverse-engineered and checked for internal consistency (143 `.cex`, 26 `.ndax` files), but not yet against official exports — please verify important numbers. A Windows installer (per-user, no admin rights needed), a portable Windows zip and a macOS (Apple Silicon) disk image are on the Releases page; otherwise `pip install -r requirements.txt && python -m galvaplot`. MIT licensed; not affiliated with LAND or Neware.
+**GalvaPlot** is a small desktop app for battery researchers. Drag up to 10 raw battery-tester files (LAND `.cex`, Neware `.ndax` from BTS 8.x) into the window and get publication-style figures in one click: voltage profiles, cycling metrics (capacity, coulombic/energy efficiency, retention, average voltages, ΔV), voltage vs time and dQ/dV. Curve names are editable (with `X_{sub}` / `X^{sup}` shortcuts), figures can be copied straight into PowerPoint or saved as PNG/SVG/PDF/TIFF, and plotted data can be exported to Excel; right-click a sub-plot to copy just its data. Profiles and dQ/dV can also be drawn with all cycles of all cells in one panel, and the active mass stored in Neware files is read automatically. A "check for updates" link queries GitHub Releases (at most once a day automatically; can be switched off). Both readers are reverse-engineered and checked for internal consistency (143 `.cex`, 26 `.ndax` files), but not yet against official exports — please verify important numbers. A Windows installer (per-user, no admin rights needed), a portable Windows zip and a macOS (Apple Silicon) disk image are on the Releases page; otherwise `pip install -r requirements.txt && python -m galvaplot`. MIT licensed; not affiliated with LAND or Neware.

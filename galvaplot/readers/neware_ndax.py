@@ -127,6 +127,28 @@ def _xml_loop_starts(z: zipfile.ZipFile) -> set:
     return out
 
 
+def _active_mass_mg(z: zipfile.ZipFile):
+    """Active-material mass entered in BTS for this channel, in mg, or None.
+
+    Stored as <Head_Info><SCQ Value="..."/> in Step.xml (EditStep.xml as fallback) in
+    micrograms: in the files we checked the programmed currents are exactly SCQ x 1e-4 mA,
+    i.e. 100 / 200 mA/g with mass = SCQ / 1000 mg. Absent when no mass was entered."""
+    for name in ("Step.xml", "EditStep.xml"):
+        root = _xml(z, name)
+        if root is None:
+            continue
+        el = root.find(".//Head_Info/SCQ")
+        if el is None:
+            continue
+        try:
+            v = float(el.get("Value") or "")
+        except ValueError:
+            continue
+        if 0 < v < 1e9:
+            return v / 1000.0
+    return None
+
+
 def _start_time(z: zipfile.ZipFile):
     root = _xml(z, "TestInfo.xml")
     if root is None:
@@ -178,6 +200,7 @@ def read_ndax(path: str):
         S = _records(z.read("data_step.ndc"), 100, 7, "data_step.ndc").copy().view(STEP17).ravel()
         xml_starts = _xml_loop_starts(z)
         start = _start_time(z)
+        mass_mg = _active_mass_mg(z)
     warnings = []
     N = len(D)
     if N == 0 or len(R) == 0 or len(S) == 0:
@@ -220,4 +243,5 @@ def read_ndax(path: str):
     E = (R["ec"] + R["ed"]) * np.float32(1e3)
     return assemble(path, "Neware .ndax", t=t_ms / 1000.0, V=V, I=I, Q=Q, E=E, run_id=run_id,
                     cycle_of_run=cycle_of_run, mode_of_run=mode_of_run, start_time=start,
-                    warnings=warnings, info={"ndc_version": SUPPORTED_VERSION, "n_steps": len(S)})
+                    warnings=warnings, info={"ndc_version": SUPPORTED_VERSION, "n_steps": len(S),
+                          "mass_mg": mass_mg})

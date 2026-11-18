@@ -8,7 +8,7 @@ import traceback
 from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QImage, QPixmap
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog, QFrame,
-                               QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit,
+                               QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMenu, QPlainTextEdit,
                                QPushButton, QSizePolicy, QSpinBox, QStackedWidget, QVBoxLayout, QWidget)
 
 from ..plotting import figures as F
@@ -43,6 +43,10 @@ class PreviewLabel(QLabel):
     def resizeEvent(self, e):
         super().resizeEvent(e)
         self.resized.emit()
+
+
+ARRANGE_TIP = ("每圈一个子图：比较不同电池\n每个电池一个子图：比较同一电池的不同圈\n"
+               "所有圈+所有电池：全部画在一张图里，颜色区分电池，线型区分圈数（超过 4 圈时用深浅区分）")
 
 
 class PlotPanel(QWidget):
@@ -143,6 +147,9 @@ class PlotPanel(QWidget):
         pv.addWidget(self.panel_bar)
         self.preview = PreviewLabel()
         self.preview.resized.connect(lambda: self._render_timer.start())
+        self.preview.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.preview.customContextMenuRequested.connect(self._preview_menu)
+        self.preview.setToolTip("右键：复制某个子图的数据或图片、只显示某个子图等")
         pv.addWidget(self.preview, 1)
         lay.addWidget(card, 1)
         self.notes = QLabel("")
@@ -296,8 +303,9 @@ class PlotPanel(QWidget):
         return self._row("圈数", self._line("p_cycles", "如 1, 2, 5 或 1-10", 150,
                                              "要画的循环圈数，用逗号分隔，可写范围 1-10"),
                          "|", "显示", self._combo("p_show", [("充电 + 放电", "both"), ("仅放电", "discharge"), ("仅充电", "charge")]),
-                         "|", "排布", self._combo("p_arrange", [("每圈一个子图", "by_cycle"), ("每个电池一个子图", "by_cell")],
-                                                    "每圈一个子图：比较不同电池；每个电池一个子图：比较同一电池的不同圈"))
+                         "|", "排布", self._combo("p_arrange", [("每圈一个子图", "by_cycle"), ("每个电池一个子图", "by_cell"),
+                                                        ("所有圈+所有电池", "all")],
+                                                    ARRANGE_TIP))
 
     def _opts_cycling(self):
         box = QWidget()
@@ -343,7 +351,8 @@ class PlotPanel(QWidget):
         v.setSpacing(6)
         v.addWidget(self._row("圈数", self._line("d_cycles", "如 2, 10", 110),
                               "|", "显示", self._combo("d_show", [("充电 + 放电", "both"), ("仅放电", "discharge"), ("仅充电", "charge")]),
-                              "|", "排布", self._combo("d_arrange", [("每圈一个子图", "by_cycle"), ("每个电池一个子图", "by_cell")])))
+                              "|", "排布", self._combo("d_arrange", [("每圈一个子图", "by_cycle"), ("每个电池一个子图", "by_cell"),
+                                                        ("所有圈+所有电池", "all")], ARRANGE_TIP)))
         v.addWidget(self._row("电压间隔", self._dspin("d_dv_mV", 0.5, 100, 0.5, 1, " mV", "每隔多少 mV 取一个点做差分；越大越平滑"),
                               "|", "平滑点数", self._spin("d_smooth", 1, 51, None, "滑动平均点数，1 = 不平滑")))
         return box
@@ -540,12 +549,141 @@ class PlotPanel(QWidget):
         self.preview.setText("")
         self.preview.setPixmap(pm)
 
+    # ------------------------------------------------------------ right-click menu on the preview
+    def _panel_at(self, pos):
+        """Index (into result.panels) of the sub-plot under a point of the preview, or None."""
+        res = self.result
+        pm = self.preview.pixmap()
+        if res is None or pm is None or pm.isNull() or not res.panels or len(res.axes) != len(res.panels):
+            return None
+        dpr = pm.devicePixelRatio() or 1.0
+        pw, ph = pm.width() / dpr, pm.height() / dpr
+        cr = self.preview.contentsRect()
+        fx = (pos.x() - cr.x() - (cr.width() - pw) / 2) / pw
+        fy = 1 - (pos.y() - cr.y() - (cr.height() - ph) / 2) / ph
+        if not (0 <= fx <= 1 and 0 <= fy <= 1):
+            return None
+        if len(res.axes) == 1:
+            return 0
+        fig = res.fig
+        W, H = fig.bbox.width, fig.bbox.height
+        try:
+            renderer = fig.canvas.get_renderer()
+            boxes = [ax.get_tightbbox(renderer) for ax in res.axes]   # includes tick labels and titles
+        except Exception:
+            boxes = [ax.get_window_extent() for ax in res.axes]
+        mx, my = 0.2 * fig.dpi / W, 0.2 * fig.dpi / H        # 0.2 inch of slack around each panel
+        hits = [i for i, b in enumerate(boxes)
+                if b.x0 / W - mx <= fx <= b.x1 / W + mx and b.y0 / H - my <= fy <= b.y1 / H + my]
+        if not hits:
+            return None
+
+        def dist(i):        # overlapping boxes: the panel whose plot area is closest
+            p = res.axes[i].get_position()
+            return max(p.x0 - fx, 0, fx - p.x1) + max(p.y0 - fy, 0, fy - p.y1)
+        return min(hits, key=dist)
+
+    def _shown_keys(self):
+        keys = [k for k, _ in (self.result.all_panels if self.result else [])]
+        return [k for k in keys if k not in self.hidden[self.kind]] or keys
+
+    def _single_panel(self, i):
+        """FigureResult with only sub-plot i (no letter), or the current one if it has one panel."""
+        res = self.result
+        if len(res.panels) == 1:
+            return res
+        shown = self._shown_keys()
+        if i >= len(shown):
+            return None
+        o = self._opts_for(self.kind)
+        o["hidden_panels"] = [k for k, _ in res.all_panels if k != shown[i]]
+        try:
+            return F.build(self.kind, self.series_cache, o)
+        except Exception as e:
+            traceback.print_exc()
+            self.message.emit(f"作图出错：{e}")
+            return None
+
+    def _panel_name(self, i):
+        res = self.result
+        title = res.panels[i].get("title") or ""
+        return f"{F.LETTERS[i]} 图" if len(res.panels) > 1 else (title or "此图")
+
+    def copy_panel_data(self, i):
+        p = self.result.panels[i]
+        text = F.panel_text(p)
+        if not text:
+            self.message.emit("这个子图没有数据")
+            return
+        QGuiApplication.clipboard().setText(text)
+        n = len(p["curves"])
+        self.message.emit(f"已复制 {self._panel_name(i)}的数据（{n} 条曲线，每条两列），可直接粘贴到 Excel / Origin")
+
+    def _copy_panel_image(self, i):
+        r = self._single_panel(i)
+        if r is not None:
+            self.copy_image(r)
+            self.message.emit(f"已复制 {self._panel_name(i)}（单独一张，不带字母编号），可直接粘贴到 PPT / Word")
+
+    def _save_panel(self, i):
+        r = self._single_panel(i)
+        if r is not None:
+            self.save_image(r, f"_{F.LETTERS[i]}")
+
+    def _only_panel(self, i):
+        shown = self._shown_keys()
+        if i < len(shown):
+            self.hidden[self.kind] = {k for k, _ in self.result.all_panels if k != shown[i]}
+            self.schedule()
+
+    def _hide_panel(self, i):
+        shown = self._shown_keys()
+        if i < len(shown) and len(shown) > 1:
+            self.hidden[self.kind].add(shown[i])
+            self.schedule()
+
+    def _preview_menu(self, pos):
+        m = self._build_preview_menu(pos)
+        if m is not None:
+            m.exec(self.preview.mapToGlobal(pos))
+
+    def _build_preview_menu(self, pos):
+        if not self.result or not self.result.panels:
+            return None
+        i = self._panel_at(pos)
+        multi = len(self.result.panels) > 1
+        m = QMenu(self)
+        if i is not None:
+            if multi:
+                head = m.addAction(f"{F.LETTERS[i]} 图 · {F.rich_plain(self.result.panels[i].get('title') or '')}")
+                head.setEnabled(False)
+            m.addAction("复制此子图数据" if multi else "复制数据", lambda: self.copy_panel_data(i))
+            if multi:
+                m.addAction("复制此子图图片", lambda: self._copy_panel_image(i))
+                m.addAction("保存此子图…", lambda: self._save_panel(i))
+                m.addSeparator()
+                m.addAction("只显示此子图", lambda: self._only_panel(i))
+                m.addAction("隐藏此子图", lambda: self._hide_panel(i))
+        elif multi:
+            hint = m.addAction("（在某个子图上右键，可单独复制它的数据）")
+            hint.setEnabled(False)
+        if self.hidden[self.kind] and len(self.result.all_panels) >= 2:
+            m.addAction("显示全部子图", self._show_all_panels)
+        m.addSeparator()
+        m.addAction("复制整张图片" if multi else "复制图片", self.copy_image)
+        m.addAction("保存图片…", self.save_image)
+        m.addAction("导出全部数据（Excel）…", self.export_data)
+        m.addSeparator()
+        m.addAction("更多设置（坐标范围、字号、图例…）", self._advanced)
+        return m
+
     # ------------------------------------------------------------ actions
-    def copy_image(self):
-        if not self.result:
+    def copy_image(self, res=None):
+        res = res or self.result
+        if not res:
             return
         img = QImage()
-        img.loadFromData(F.render_png(self.result, int(self.opts.get("dpi") or 300)), "PNG")
+        img.loadFromData(F.render_png(res, int(self.opts.get("dpi") or 300)), "PNG")
         QGuiApplication.clipboard().setImage(img)
         self.message.emit("已复制到剪贴板，可直接粘贴到 PPT / Word")
 
@@ -556,10 +694,11 @@ class PlotPanel(QWidget):
             self.settings.setValue("save_dir", os.path.dirname(path))
         return path, flt
 
-    def save_image(self):
-        if not self.result:
+    def save_image(self, res=None, suffix=""):
+        res = res or self.result
+        if not res:
             return
-        path, flt = self._ask_path("保存图片", FILE_STEM[self.kind] + ".png",
+        path, flt = self._ask_path("保存图片", FILE_STEM[self.kind] + suffix + ".png",
                                    "PNG 图片 (*.png);;SVG 矢量图 (*.svg);;PDF (*.pdf);;TIFF (*.tif)")
         if not path:
             return
@@ -568,7 +707,7 @@ class PlotPanel(QWidget):
             ext = {"SVG": ".svg", "PDF": ".pdf", "TIFF": ".tif"}.get(flt.split()[0] if flt else "", ".png")
             path += ext
         try:
-            F.save(self.result, path, dpi=int(self.opts.get("dpi") or 300))
+            F.save(res, path, dpi=int(self.opts.get("dpi") or 300))
         except Exception as e:
             self.message.emit(f"保存失败：{e}")
             return

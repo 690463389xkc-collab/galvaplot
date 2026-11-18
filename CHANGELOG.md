@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 (2026-11-18)
+
+- New arrangement "所有圈+所有电池" for voltage profiles and dQ/dV: every selected cycle of every cell in one panel (colour = cell, line style = cycle; shades of the cell colour when there are more than 4 cycles).
+- Right-click menu on the preview: copy one sub-plot's data as tab-separated text (pastes into Excel / Origin), copy or save one sub-plot on its own, show only / hide a sub-plot, plus the whole-figure actions.
+- Neware `.ndax`: the active-material mass set in BTS (`Step.xml` → `Head_Info/SCQ`, in µg) is read and fills the "质量 mg" column unless the user typed a value; the file table's right-click menu can restore it.
+- "检查更新" (check for updates) in the status bar: asks the GitHub Releases API for the latest version; automatic check at most once a day at start-up, can be switched off; nothing is downloaded or installed automatically.
+- Invalid input in the mass column keeps the previous value instead of clearing it.
+
 ## 0.1.0 (2026-11-17)
 
 First public version.

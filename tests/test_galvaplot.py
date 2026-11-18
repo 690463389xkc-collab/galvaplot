@@ -234,6 +234,14 @@ class TestNdax(Tmp):
         self.assertTrue(np.all(np.diff(c.t) >= 0))
         self.assertEqual(default_name(p), "Li-Cl-test-1")
 
+    def test_active_mass_from_step_xml(self):
+        p = os.path.join(self.dir, "with_mass.ndax")
+        write_ndax(p, _li_cl_program(1), loop_starts=[4], scq=3150)
+        self.assertAlmostEqual(load_file(p).info["mass_mg"], 3.15)
+        p2 = os.path.join(self.dir, "no_mass.ndax")
+        write_ndax(p2, _li_cl_program(1), loop_starts=[4])
+        self.assertIsNone(load_file(p2).info["mass_mg"])
+
     def test_cycles_before_first_repeat_use_step_xml(self):
         p = os.path.join(self.dir, "one_pass.ndax")
         write_ndax(p, _li_cl_program(1), loop_starts=[4])
@@ -334,6 +342,39 @@ class TestFigures(Tmp):
         r = F.build("profiles", self.series, dict(p_cycles="999"))
         self.assertTrue(any("没有数据" in n for n in r.notes))
 
+    def test_all_cycles_all_cells_in_one_panel(self):
+        ser = self.series
+        for kind, key, cyc in (("profiles", "p", "1, 2, 5"), ("dqdv", "d", "2, 3")):
+            r = F.build(kind, ser, {f"{key}_arrange": "all", f"{key}_cycles": cyc})
+            self.assertEqual(len(r.panels), 1)
+            self.assertEqual(len(r.axes), 1)
+            self.assertEqual(r.all_panels, [])
+            n_cyc = len(F.parse_cycles(cyc))
+            n_kinds = 2
+            self.assertEqual(len(r.panels[0]["curves"]), len(ser) * n_cyc * n_kinds)
+        styles = F.cycle_styles(3)
+        self.assertEqual([ls for ls, _ in styles], ["-", "--", ":"])
+        shades = F.cycle_styles(8)
+        self.assertTrue(all(ls == "-" for ls, _ in shades))
+        self.assertLess(shades[0][1], shades[-1][1])
+        self.assertEqual(F.tint("#000000", 1.0), "#000000")
+        self.assertEqual(F.tint("#000000", 0.0), "#ffffff")
+
+    def test_panel_text_and_axes(self):
+        ser = self.series
+        r = F.build("profiles", ser, {"p_cycles": "1, 2", "p_arrange": "by_cycle"})
+        self.assertEqual(len(r.axes), len(r.panels))
+        txt = F.panel_text(r.panels[1])
+        rows = txt.rstrip("\n").split("\n")
+        n_cols = 2 * len(r.panels[1]["curves"])
+        self.assertTrue(all(len(row.split("\t")) == n_cols for row in rows))
+        head2 = rows[1].split("\t")
+        self.assertTrue(head2[0].startswith("Capacity") and head2[1].startswith("Voltage"))
+        name, x, y = r.panels[1]["curves"][0]
+        self.assertAlmostEqual(float(rows[2].split("\t")[0]), float(x[0]), places=4)
+        self.assertAlmostEqual(float(rows[2].split("\t")[1]), float(y[0]), places=4)
+        self.assertNotIn("$", txt)
+
     def test_panel_selection(self):
         r = F.build("profiles", self.series, dict(p_cycles="1, 2, 5"))
         self.assertEqual([k for k, _ in r.all_panels], ["cycle:1", "cycle:2", "cycle:5"])
@@ -363,6 +404,39 @@ class TestFigures(Tmp):
         tab = A.cycle_table(self.series[0].cell)
         self.assertAlmostEqual(rows[2][1], tab[0]["dchg_mAh"], places=9)
         self.assertEqual(sum(1 for n in wb.sheetnames if n.startswith("Cycles")), 4)
+
+
+class TestUpdates(unittest.TestCase):
+    def test_versions(self):
+        from galvaplot import updates as U
+        self.assertEqual(U.parse_version("v0.2.10"), (0, 2, 10))
+        self.assertEqual(U.parse_version("1.0"), (1, 0, 0))
+        self.assertIsNone(U.parse_version("latest"))
+        self.assertTrue(U.is_newer("v0.10.0", "0.9.9"))
+        self.assertFalse(U.is_newer("v0.2.0", "0.2.0"))
+        self.assertFalse(U.is_newer("garbage", "0.2.0"))
+
+    def test_interpret_and_assets(self):
+        import json as _json
+        from galvaplot import updates as U
+        assets = [{"name": "GalvaPlot-9.0.0-Windows-Setup.exe", "browser_download_url": "https://x/setup.exe"},
+                  {"name": "GalvaPlot-9.0.0-Windows-x64-portable.zip", "browser_download_url": "https://x/p.zip"},
+                  {"name": "GalvaPlot-9.0.0-macOS-AppleSilicon.dmg", "browser_download_url": "https://x/a.dmg"}]
+        self.assertEqual(U.pick_asset(assets, "win32", "AMD64"), "https://x/setup.exe")
+        self.assertEqual(U.pick_asset(assets, "darwin", "arm64"), "https://x/a.dmg")
+        self.assertIsNone(U.pick_asset(assets, "darwin", "x86_64"))      # no Intel build: release page
+        self.assertIsNone(U.pick_asset(assets, "linux", "x86_64"))
+        body = "## GalvaPlot v9 · 标题\n\n- **新功能** `x`\n| a | b |\n---\n**English** — skip"
+        r = U.interpret(_json.dumps({"tag_name": "v9.0.0", "html_url": "https://x/rel", "body": body,
+                                     "assets": assets}).encode(), current="0.2.0")
+        self.assertTrue(r["ok"] and r["newer"])
+        self.assertEqual(r["latest"], "9.0.0")
+        self.assertEqual(r["notes"], "GalvaPlot v9 · 标题\n- 新功能 x")
+        self.assertIn(r["download"], ("https://x/setup.exe", "https://x/a.dmg", "https://x/rel"))
+        r = U.interpret(b'{"tag_name": "v0.2.0"}', current="0.2.0")
+        self.assertTrue(r["ok"] and not r["newer"])
+        self.assertFalse(U.interpret(b'{"message": "Not Found"}')["ok"])
+        self.assertFalse(U.interpret(b"<html>")["ok"])
 
 
 if __name__ == "__main__":

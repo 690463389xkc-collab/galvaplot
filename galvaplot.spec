@@ -14,7 +14,7 @@ LICENSES = collect(os.path.join(HERE, "build", "third_party_licenses"))
 
 excludes = ["tkinter", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.QtQml",
             "PySide6.QtQuick", "PySide6.Qt3DCore", "PySide6.QtMultimedia", "PySide6.QtCharts",
-            "PySide6.QtNetwork", "PySide6.QtSql", "PySide6.QtPdf", "IPython", "pytest"]
+            "PySide6.QtSql", "PySide6.QtPdf", "IPython", "pytest"]
 
 a = Analysis(
     ["run_galvaplot.py"],
