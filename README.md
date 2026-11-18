@@ -73,9 +73,12 @@ Intel 芯片的 Mac 和 Linux 暂时没有安装包，请用下面的“从源�
 
 ### 更新到新版本
 
-点窗口右下角的“**检查更新**”。有新版本时点“下载新版本”，像第一次一样安装即可：Windows 安装包会直接替换旧版本；macOS 把新的 GalvaPlot 拖进“应用程序”时选“替换”。原来的设置、曲线名称和质量都会保留。
+从 0.3.0 开始：点窗口右下角的“**检查更新**”，有新版本时点“**立即更新**”。程序会下载新版本，核对 GitHub 公布的校验值（SHA-256）无误后自动替换旧版本并重新打开，**不用再到系统设置里放行**（只有第一次安装需要）。原来的设置、曲线名称和质量都会保留，已拖入的文件需要重新拖入。
 
-程序默认每天启动时最多自动检查一次，只向 GitHub 查询最新版本号（不上传任何数据或文件），可以在检查更新的窗口里关掉。新版本不会自动下载或安装。
+- 适用于：macOS 装在“应用程序”里的版本、Windows 用安装包装的版本。Windows 免安装版和从源码运行的，请手动下载替换或 `git pull`。
+- 0.2.x 及更早的版本还没有这个功能，需要像第一次一样手动下载安装一次 0.3.0 或更新的版本：Windows 安装包会直接替换旧版本；macOS 把新的 GalvaPlot 拖进“应用程序”时选“替换”。
+- 程序默认每天启动时最多自动检查一次，只向 GitHub 查询最新版本号（不上传任何数据或文件），可以在检查更新的窗口里关掉。只有你点了“立即更新”才会下载和安装。
+- 为什么不用再放行：系统只给浏览器下载的文件打“来自网络”的标记，程序自己下载的更新没有这个标记。作为替代，程序在安装前核对校验值，下载不完整或被篡改就不安装；这依赖于本仓库的发布页面没有被他人篡改。
 
 ### 卸载
 
@@ -143,10 +146,10 @@ python -m unittest discover -s tests -v
 ```bash
 python -m pip install pyinstaller
 pyinstaller --noconfirm galvaplot.spec                                            # 程序本体（dist/）
-bash tools/make_dmg.sh dist/GalvaPlot.app dist/GalvaPlot-0.2.1-macOS-AppleSilicon.dmg   # macOS 安装镜像
+bash tools/make_dmg.sh dist/GalvaPlot.app dist/GalvaPlot-0.3.0-macOS-AppleSilicon.dmg   # macOS 安装镜像
 ```
 
-Windows 安装包用 [Inno Setup 6](https://jrsoftware.org/isinfo.php) 制作：`ISCC.exe /DMyAppVersion=0.2.1 installer\galvaplot.iss`。
+Windows 安装包用 [Inno Setup 6](https://jrsoftware.org/isinfo.php) 制作：`ISCC.exe /DMyAppVersion=0.3.0 installer\galvaplot.iss`。
 
 发布新版本：改 `galvaplot/__init__.py` 里的版本号，推送 `v*` 标签（例如 `v0.2.0`），并在 `docs/release-notes/` 里放同名的发布说明（例如 `v0.2.0.md`）。GitHub Actions 会在 Linux 和 Windows 上跑测试，然后自动生成 Windows 安装包、Windows 免安装 zip 和 macOS dmg，并模拟用户安装后再自检一遍（Windows：静默安装 → 运行 → 卸载；macOS：挂载 dmg → 拷出程序 → 运行），全部通过才上传到 Releases。
 
@@ -163,6 +166,7 @@ galvaplot/
   gui/                  PySide6 界面
   demo.py               合成示例数据（也用于测试）
   updates.py            检查更新（只访问 GitHub Releases）
+  self_update.py        程序内更新：核对校验值后替换旧版本
 installer/galvaplot.iss  Windows 安装包脚本（Inno Setup）
 tools/make_dmg.sh       macOS dmg 制作脚本（窗口布局来自 assets/dmg/template.dmg）
 tools/make_dmg_art.py   dmg 背景和首次打开说明图；改完后运行 tools/make_dmg_template.sh 重做模板
@@ -175,7 +179,7 @@ tests/                  单元测试
 
 ## 引用
 
-如果 GalvaPlot 对你的研究有帮助，可以在论文的方法部分注明作图工具，例如“数据使用 GalvaPlot v0.2.1 处理和作图”。仓库页面右侧的 **Cite this repository** 提供 APA / BibTeX 格式（来自 [CITATION.cff](CITATION.cff)）。
+如果 GalvaPlot 对你的研究有帮助，可以在论文的方法部分注明作图工具，例如“数据使用 GalvaPlot v0.3.0 处理和作图”。仓库页面右侧的 **Cite this repository** 提供 APA / BibTeX 格式（来自 [CITATION.cff](CITATION.cff)）。
 
 ## 许可与声明
 

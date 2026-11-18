@@ -2,6 +2,7 @@
 import csv
 import datetime as dt
 import os
+import sys
 import shutil
 import tempfile
 import unittest
@@ -437,6 +438,94 @@ class TestUpdates(unittest.TestCase):
         self.assertTrue(r["ok"] and not r["newer"])
         self.assertFalse(U.interpret(b'{"message": "Not Found"}')["ok"])
         self.assertFalse(U.interpret(b"<html>")["ok"])
+
+
+class TestSelfUpdate(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_asset_digest(self):
+        from galvaplot import updates as U
+        h = "ab" * 32
+        assets = [{"name": "GalvaPlot-9.0.0-macOS-AppleSilicon.dmg", "browser_download_url": "https://x/a.dmg",
+                   "size": 123, "digest": "sha256:" + h.upper()},
+                  {"name": "GalvaPlot-9.0.0-Windows-Setup.exe", "browser_download_url": "https://x/s.exe"}]
+        a = U.asset_info(assets, "darwin", "arm64")
+        self.assertEqual((a["url"], a["size"], a["sha256"]), ("https://x/a.dmg", 123, h))
+        self.assertIsNone(U.asset_info(assets, "win32", "AMD64")["sha256"])      # no digest: no self-install
+        os.environ["GALVAPLOT_FAKE_VERSION"] = "0.0.1"
+        try:
+            self.assertEqual(U.current_version(), "0.0.1")
+            self.assertTrue(U.interpret(b'{"tag_name": "v0.1.0"}')["newer"])
+        finally:
+            del os.environ["GALVAPLOT_FAKE_VERSION"]
+
+    def test_install_target(self):
+        from galvaplot import self_update as SU
+        self.assertIsNone(SU.install_target(frozen=False)[0])
+        app = os.path.join(self.dir, "GalvaPlot.app")
+        os.makedirs(os.path.join(app, "Contents", "MacOS"))
+        exe = os.path.join(app, "Contents", "MacOS", "GalvaPlot")
+        self.assertEqual(SU.install_target(exe, "darwin", True), (app, None))
+        self.assertIsNone(SU.install_target(os.path.join(self.dir, "x", "y", "z"), "darwin", True)[0])
+        win = os.path.join(self.dir, "win")
+        os.makedirs(win)
+        exe = os.path.join(win, "GalvaPlot.exe")
+        self.assertIsNone(SU.install_target(exe, "win32", True)[0])               # portable: no
+        open(os.path.join(win, "unins000.exe"), "w").close()
+        self.assertEqual(SU.install_target(exe, "win32", True), (win, None))
+        self.assertIsNone(SU.install_target(exe, "linux", True)[0])
+
+    def test_sha256_file(self):
+        import hashlib
+        from galvaplot import self_update as SU
+        p = os.path.join(self.dir, "f.bin")
+        data = os.urandom(3_000_000)
+        with open(p, "wb") as f:
+            f.write(data)
+        self.assertEqual(SU.sha256_file(p, chunk=65536), hashlib.sha256(data).hexdigest())
+
+    @unittest.skipUnless(sys.platform == "darwin", "needs hdiutil")
+    def test_mac_swap_script(self):
+        import subprocess
+        from galvaplot import self_update as SU
+
+        def fake_app(root, version):
+            c = os.path.join(root, "GalvaPlot.app", "Contents")
+            os.makedirs(c)
+            with open(os.path.join(c, "version.txt"), "w") as f:
+                f.write(version)
+
+        stage = os.path.join(self.dir, "stage")
+        fake_app(stage, "new")
+        dmg = os.path.join(self.dir, "new.dmg")
+        subprocess.run(["hdiutil", "create", "-quiet", "-volname", "GalvaPlotTest", "-srcfolder", stage,
+                        "-fs", "HFS+", "-format", "UDZO", dmg], check=True)
+        apps = os.path.join(self.dir, "Applications")
+        fake_app(apps, "old")
+        target = os.path.join(apps, "GalvaPlot.app")
+        script = os.path.join(self.dir, "u.sh")
+        with open(script, "w") as f:
+            f.write(SU.MAC_SCRIPT)
+        dead = subprocess.Popen(["true"])
+        dead.wait()
+        r = subprocess.run(["/bin/sh", script, str(dead.pid), dmg, target, "0"], capture_output=True, text=True,
+                           timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(target, "Contents", "version.txt")) as f:
+            self.assertEqual(f.read(), "new")
+        self.assertFalse(os.path.exists(dmg))                                   # downloaded file removed
+        self.assertEqual(sorted(os.listdir(apps)), ["GalvaPlot.app"])          # no leftovers
+        # a broken package keeps the installed version
+        with open(dmg, "wb") as f:
+            f.write(b"not a disk image")
+        r = subprocess.run(["/bin/sh", script, str(dead.pid), dmg, target, "0"], capture_output=True, text=True,
+                           timeout=120)
+        with open(os.path.join(target, "Contents", "version.txt")) as f:
+            self.assertEqual(f.read(), "new")
 
 
 if __name__ == "__main__":

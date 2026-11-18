@@ -7,11 +7,12 @@ import time
 
 from PySide6.QtCore import QSettings, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
-from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QMainWindow,
+from PySide6.QtWidgets import (QApplication, QCheckBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel,
+                               QMainWindow, QMessageBox, QProgressDialog,
                                QPushButton, QScrollArea, QSplitter, QVBoxLayout, QWidget)
 
 from .. import APP_TITLE, MAX_FILES, REPO, __version__
-from .. import updates
+from .. import self_update, updates
 from .file_panel import FilePanel
 from .plot_panel import PlotPanel
 
@@ -32,9 +33,14 @@ HELP = f"""<h3>GalvaPlot {__version__} · 电池数据一键作图</h3>
 新威目前只支持 BTS 8.x 写出的 .ndax（内部 v17），不支持旧版 .nda。
 遇到 CV、CCCV 等其他工步类型时按电流方向判断充放电。重要数据请与官方软件核对。
 读不了的文件欢迎到 GitHub 提交 issue。</p>
-<p><b>检查更新</b>：点右下角“检查更新”。程序默认每天启动时最多自动检查一次，只向 GitHub 查询最新版本号（不上传任何数据或文件），可以在检查更新的窗口里关掉。新版本需要自己下载安装，原来的设置会保留。项目主页：<a href="https://github.com/{REPO}">github.com/{REPO}</a></p>
+<p><b>检查更新</b>：点右下角“检查更新”，有新版本时点“立即更新”：程序下载新版本、核对 GitHub 公布的校验值后自动安装并重新打开，不用再到系统设置里放行（Windows 免安装版请手动下载）。程序默认每天启动时最多自动检查一次，只向 GitHub 查询最新版本号（不上传任何数据或文件），可以在检查更新的窗口里关掉。原来的设置会保留。项目主页：<a href="https://github.com/{REPO}">github.com/{REPO}</a></p>
 <p>本软件与武汉市蓝电电子股份有限公司、深圳市新威尔电子有限公司无关。开源协议：MIT。程序包含的第三方开源组件（其中 Qt / PySide6 按 LGPL-3.0 使用）及其许可证，见安装目录里的 licenses / third_party_licenses 文件夹。</p>
 """
+
+
+def updates_dir():
+    import tempfile
+    return os.path.join(tempfile.gettempdir(), "GalvaPlot-update")
 
 
 class MainWindow(QMainWindow):
@@ -80,6 +86,8 @@ class MainWindow(QMainWindow):
             self.checker.finished.connect(self._update_result)
         self._manual_check = False
         self._newer = None
+        self._update_progress = None
+        self._downloader = None
         QTimer.singleShot(3000, self._auto_check)
         self.statusBar().showMessage("拖入蓝电 .cex 或新威 .ndax 文件开始作图")
 
@@ -124,7 +132,8 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------ updates
     def _auto_check(self):
-        if not self.checker or os.environ.get("GALVAPLOT_SELFTEST") or os.environ.get("GALVAPLOT_NO_UPDATE_CHECK"):
+        if (not self.checker or os.environ.get("GALVAPLOT_SELFTEST") or os.environ.get("GALVAPLOT_SELFTEST_UPDATE")
+                or os.environ.get("GALVAPLOT_NO_UPDATE_CHECK")):
             return
         if not self.settings.value("update/auto", True, type=bool):
             return
@@ -181,13 +190,32 @@ class MainWindow(QMainWindow):
 
         if res.get("ok") and res.get("newer"):
             text = (f"<p style='font-size:15px'><b>有新版本：{html.escape(res['latest'])}</b>"
-                    f"（当前 {__version__}）</p>")
+                    f"（当前 {html.escape(res.get('current') or __version__)}）</p>")
             if res.get("notes"):
                 text += ("<p style='color:#374151'>" + html.escape(res["notes"]).replace("\n", "<br>") + "</p>")
-            text += ("<p style='color:#4b5563'>下载后像第一次一样安装即可：Windows 双击安装包会替换旧版本；"
-                     "macOS 把新的 GalvaPlot 拖进“应用程序”，提示时选“替换”。原来的设置和曲线名称会保留。</p>")
+            asset = res.get("asset") or {}
+            target, why = self_update.install_target()
+            can_self = bool(target and asset.get("sha256"))
+            if can_self:
+                mb = f"约 {asset['size'] / 1e6:.0f} MB" if asset.get("size") else ""
+                text += ("<p style='color:#4b5563'>点“立即更新”：下载新版本（" + mb + "），核对 GitHub 公布的校验值后"
+                         "自动安装，GalvaPlot 会关闭并重新打开，<b>不用再到系统设置里放行</b>。"
+                         "设置和曲线名称会保留，已拖入的文件需要重新拖入。</p>")
+            else:
+                if target and not asset.get("sha256"):
+                    why = "这个版本没有校验值，不能自动安装"
+                text += ("<p style='color:#4b5563'>下载后像第一次一样安装即可：Windows 双击安装包会替换旧版本；"
+                         "macOS 把新的 GalvaPlot 拖进“应用程序”，提示时选“替换”。原来的设置和曲线名称会保留。"
+                         + (f"<br>（不能在程序里直接更新：{html.escape(why)}）" if why else "") + "</p>")
             link_btn("查看更新说明", res["page"])
-            link_btn("下载新版本", res["download"], primary=True)
+            if can_self:
+                b = QPushButton("立即更新")
+                b.setObjectName("primary")
+                b.setDefault(True)
+                b.clicked.connect(lambda: (dlg.accept(), self.start_self_update(res, target)))
+                buttons.addWidget(b)
+            else:
+                link_btn("下载新版本", res["download"], primary=True)
         elif res.get("ok"):
             text = f"<p style='font-size:15px'>已经是最新版本（{__version__}）。</p>"
         else:
@@ -209,6 +237,83 @@ class MainWindow(QMainWindow):
         lay.addLayout(buttons)
         self._last_update_dialog = dlg          # for tests / screenshots
         dlg.exec()
+
+    def start_self_update(self, res, target, interactive=True):
+        """Download the new package, check its SHA-256, start the installer helper, quit."""
+        asset = res["asset"]
+        dest = os.path.join(updates_dir(), asset["name"])
+        prog = QProgressDialog(f"正在下载 GalvaPlot {res['latest']}…", "取消", 0, 1000, self)
+        prog.setWindowTitle("更新 GalvaPlot")
+        prog.setWindowModality(Qt.WindowModality.WindowModal)
+        prog.setMinimumDuration(0)
+        prog.setAutoClose(False)
+        prog.setAutoReset(False)
+        prog.setMinimumWidth(420)
+        prog.setValue(0)
+        self._update_progress = prog
+        dl = updates.Downloader(self)
+        self._downloader = dl
+        expected = asset.get("size") or 0
+
+        def on_progress(got, total):
+            total = total if total > 0 else expected
+            if total > 0:
+                prog.setValue(min(1000, int(got * 1000 / total)))
+                prog.setLabelText(f"正在下载 GalvaPlot {res['latest']}…  {got / 1e6:.1f} / {total / 1e6:.1f} MB")
+
+        def fail(msg):
+            prog.close()
+            print("UPDATE FAILED:", msg, flush=True)
+            if not interactive:
+                QApplication.exit(1)
+                return
+            box = QMessageBox(QMessageBox.Icon.Warning, "更新没有完成", "更新没有完成，当前版本不受影响",
+                              QMessageBox.StandardButton.Close, self)
+            box.setInformativeText(f"{msg}\n\n可以稍后再试，或打开发布页面手动下载。")
+            page = box.addButton("打开发布页面", QMessageBox.ButtonRole.ActionRole)
+            box.exec()
+            if box.clickedButton() is page:
+                QDesktopServices.openUrl(QUrl(res.get("page") or updates.RELEASES_URL))
+
+        def on_finished(path, err):
+            if err:
+                if err != "已取消":
+                    fail(f"下载失败：{err}")
+                else:
+                    prog.close()
+                return
+            prog.setCancelButton(None)
+            prog.setLabelText("正在核对校验值…")
+            QApplication.processEvents()
+            digest = self_update.sha256_file(path)
+            if digest != asset["sha256"]:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+                fail("下载的文件与 GitHub 公布的校验值不一致，已删除，没有安装。")
+                return
+            prog.setLabelText("正在安装，GalvaPlot 会自动关闭并重新打开…")
+            QApplication.processEvents()
+            try:
+                self_update.start_install(path, target,
+                                          relaunch=not os.environ.get("GALVAPLOT_UPDATE_NO_RELAUNCH"))
+            except OSError as e:
+                fail(f"无法启动安装：{e}")
+                return
+            print("UPDATE STARTED:", path, "->", target, flush=True)
+            QTimer.singleShot(800, self._quit_for_update)
+
+        dl.progress.connect(on_progress)
+        dl.finished.connect(on_finished)
+        prog.canceled.connect(dl.abort)
+        dl.get(asset["url"], dest)
+
+    def _quit_for_update(self):
+        if self._update_progress:
+            self._update_progress.close()
+        self.close()                     # saves the window geometry
+        QApplication.quit()
 
     # drag & drop anywhere in the window
     def dragEnterEvent(self, e):

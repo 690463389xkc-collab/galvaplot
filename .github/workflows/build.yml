@@ -86,6 +86,41 @@ jobs:
           if ($r.ExitCode -ne 0) { exit 1 }
           $u = Start-Process -FilePath (Join-Path $dir "unins000.exe") -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES" -Wait -PassThru
           if ($u.ExitCode -ne 0) { Write-Error "uninstaller exit code $($u.ExitCode)"; exit 1 }
+      # In-app update ("立即更新"): install this build, let it update itself to the newest published
+      # release (it pretends to be 0.0.1), check the installed version changed. Network-dependent,
+      # so it does not block the release; read its log.
+      - name: Test in-app update (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          GALVAPLOT_SELFTEST_UPDATE: "1"
+          GALVAPLOT_FAKE_VERSION: "0.0.1"
+          GALVAPLOT_UPDATE_NO_RELAUNCH: "1"
+          GALVAPLOT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $setup = "dist\GalvaPlot-${{ steps.ver.outputs.version }}-Windows-Setup.exe"
+          $i = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CURRENTUSER", "/NORESTART" -Wait -PassThru
+          if ($i.ExitCode -ne 0) { Write-Error "installer exit code $($i.ExitCode)"; exit 1 }
+          $key = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{9BDACDDD-97AA-49AD-8DC8-2F80B081866D}_is1"
+          $dir = (Get-ItemProperty $key).InstallLocation
+          $before = (Get-ItemProperty $key).DisplayVersion
+          $latest = (Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:GALVAPLOT_GITHUB_TOKEN" } "https://api.github.com/repos/${{ github.repository }}/releases/latest").tag_name.TrimStart("v")
+          Write-Host "installed $before in $dir; newest published release: $latest"
+          $r = Start-Process -FilePath (Join-Path $dir "GalvaPlot.exe") -Wait -PassThru
+          Write-Host "app exit code $($r.ExitCode)"
+          $now = $before
+          for ($t = 0; $t -lt 150; $t++) {
+            Start-Sleep -Seconds 2
+            $now = (Get-ItemProperty $key).DisplayVersion
+            if ($now -eq $latest) { break }
+          }
+          Start-Sleep -Seconds 5
+          Get-Content (Join-Path $env:TEMP "galvaplot_update.log") -ErrorAction SilentlyContinue
+          Write-Host "installed version after the update: $now"
+          Start-Process -FilePath (Join-Path $dir "unins000.exe") -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES" -Wait
+          if ($r.ExitCode -ne 0 -or $now -ne $latest) { exit 1 }
 
       # ---------------- macOS: drag-to-install disk image ----------------
       - name: Self-test packaged app (macOS)
@@ -113,6 +148,29 @@ jobs:
           hdiutil detach "$mnt"
           "$RUNNER_TEMP/GalvaPlot.app/Contents/MacOS/GalvaPlot"
           cat selftest_dmg/selftest.txt
+      - name: Test in-app update (macOS)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        env:
+          QT_QPA_PLATFORM: offscreen
+          GALVAPLOT_SELFTEST_UPDATE: "1"
+          GALVAPLOT_FAKE_VERSION: "0.0.1"
+          GALVAPLOT_UPDATE_NO_RELAUNCH: "1"
+          GALVAPLOT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          d="$RUNNER_TEMP/update_test"
+          mkdir -p "$d"
+          ditto dist/GalvaPlot.app "$d/GalvaPlot.app"
+          log="$(python -c 'import tempfile; print(tempfile.gettempdir())')/galvaplot_update.log"
+          rm -f "$log"
+          "$d/GalvaPlot.app/Contents/MacOS/GalvaPlot"
+          for i in $(seq 1 180); do grep -q -E "^done|failed|keeping" "$log" 2>/dev/null && break; sleep 1; done
+          cat "$log" || true
+          latest="$(curl -s -H "Authorization: Bearer $GALVAPLOT_GITHUB_TOKEN" "https://api.github.com/repos/${{ github.repository }}/releases/latest" | python -c 'import json,sys; print(json.load(sys.stdin)["tag_name"].lstrip("v"))')"
+          now="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$d/GalvaPlot.app/Contents/Info.plist")"
+          echo "installed version after the update: $now (newest published release: $latest)"
+          xattr "$d/GalvaPlot.app"
+          test "$now" = "$latest"
 
       # ---------------- upload ----------------
       - uses: actions/upload-artifact@v4

@@ -91,11 +91,36 @@ def main(argv=None):
         splash.finish(w)
     files = [a for a in argv[1:] if os.path.exists(a)]
     out = os.environ.get("GALVAPLOT_SELFTEST")
-    if out:
+    if os.environ.get("GALVAPLOT_SELFTEST_UPDATE"):
+        _selftest_update(app, w)
+    elif out:
         _selftest(app, w, files, out)
     elif files:
         w.files.add_paths(files)
     return app.exec()
+
+
+def _selftest_update(app, w):
+    """Test of the in-app update (CI / developer only): check GitHub, and if a newer release
+    exists, download, verify and install it without dialogs. Use with GALVAPLOT_FAKE_VERSION
+    (pretend to be older) and GALVAPLOT_UPDATE_NO_RELAUNCH. Exit 0 = installer started."""
+    from PySide6.QtCore import QTimer
+
+    from .. import self_update
+
+    def got(res):
+        print("UPDATE CHECK:", {k: v for k, v in res.items() if k != "notes"}, flush=True)
+        target, why = self_update.install_target()
+        if not (res.get("ok") and res.get("newer") and (res.get("asset") or {}).get("sha256") and target):
+            print("UPDATE SELFTEST: nothing to install:", why or res.get("error") or "no newer release", flush=True)
+            app.exit(2)
+            return
+        w.start_self_update(res, target, interactive=False)
+
+    w.checker.finished.disconnect()
+    w.checker.finished.connect(got)
+    QTimer.singleShot(500, w.checker.check)
+    QTimer.singleShot(600000, lambda: app.exit(3))      # give up after 10 minutes
 
 
 def _selftest(app, w, files, out):
