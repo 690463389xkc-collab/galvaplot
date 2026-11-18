@@ -51,7 +51,7 @@
 |---|---|---|
 | **Windows 10/11（推荐）** | `GalvaPlot-版本号-Windows-Setup.exe` | 双击安装包，一路“Next”。默认只装给当前用户，**不需要管理员密码**；会建开始菜单项和桌面图标 |
 | Windows 免安装版 | `GalvaPlot-版本号-Windows-x64-portable.zip` | **先完整解压**，再双击文件夹里的 `GalvaPlot.exe`（在压缩软件里直接双击会打不开）。适合放 U 盘或没有安装权限的电脑 |
-| **macOS（Apple 芯片：M1–M5）** | `GalvaPlot-版本号-macOS-AppleSilicon.dmg` | 双击打开，把 GalvaPlot 图标拖到旁边的“Applications（应用程序）”文件夹 |
+| **macOS（Apple 芯片：M1–M5）** | `GalvaPlot-版本号-macOS-AppleSilicon.dmg` | 双击打开，把 GalvaPlot 图标拖到旁边的“Applications（应用程序）”文件夹；第一次打开见下面的说明 |
 
 Intel 芯片的 Mac 和 Linux 暂时没有安装包，请用下面的“从源码运行”。
 
@@ -60,7 +60,10 @@ Intel 芯片的 Mac 和 Linux 暂时没有安装包，请用下面的“从源�
 程序是免费开源软件，没有购买代码签名证书，所以系统会提示一次：
 
 - **Windows**：出现“Windows 已保护你的电脑”时，点“**更多信息**”→“**仍要运行**”。
-- **macOS**：提示“无法验证开发者 / Apple 无法检查其是否包含恶意软件”时，打开“**系统设置 → 隐私与安全性**”，在页面下方点“**仍要打开**”。
+- **macOS**：提示“无法验证 / Apple 无法检查其是否包含恶意软件”（英文系统是 “Not Opened”）时，**点“完成 / Done”，不要点蓝色的“移到废纸篓 / Move to Trash”**（点了会把程序删掉，到废纸篓里拖回“应用程序”即可）。然后打开“**系统设置 → 隐私与安全性**”，在“安全性”一栏点“**仍要打开**”，输入开机密码。只需要这一次。安装窗口里也印着这几步：
+
+  <img src="docs/first-launch-macos.png" width="560" alt="macOS 第一次打开：点完成，不要点移到废纸篓；系统设置 → 隐私与安全性 → 仍要打开">
+
   如果提示“**已损坏，无法打开**”，在“终端”里运行下面一行后再打开：
   ```bash
   xattr -dr com.apple.quarantine /Applications/GalvaPlot.app
@@ -161,7 +164,8 @@ galvaplot/
   demo.py               合成示例数据（也用于测试）
   updates.py            检查更新（只访问 GitHub Releases）
 installer/galvaplot.iss  Windows 安装包脚本（Inno Setup）
-tools/make_dmg.sh       macOS dmg 制作脚本
+tools/make_dmg.sh       macOS dmg 制作脚本（窗口布局来自 assets/dmg/template.dmg）
+tools/make_dmg_art.py   dmg 背景和首次打开说明图；改完后运行 tools/make_dmg_template.sh 重做模板
 tests/                  单元测试
 ```
 

@@ -108,6 +108,7 @@ jobs:
           mnt="$(mktemp -d)"
           hdiutil attach -nobrowse -readonly -mountpoint "$mnt" dist/GalvaPlot-*-macOS-AppleSilicon.dmg
           test -L "$mnt/Applications"
+          test -f "$mnt/.DS_Store" && test -f "$mnt/.background/background.tiff"   # window layout + first-launch picture
           ditto "$mnt/GalvaPlot.app" "$RUNNER_TEMP/GalvaPlot.app"
           hdiutil detach "$mnt"
           "$RUNNER_TEMP/GalvaPlot.app/Contents/MacOS/GalvaPlot"

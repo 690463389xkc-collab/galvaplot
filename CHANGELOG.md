@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- macOS disk image: the window now has a background with a drag-to-Applications arrow and the first-launch steps (press "Done", not "Move to Trash"; then System Settings → Privacy & Security → Open Anyway). The layout comes from a template image (`assets/dmg/template.dmg`, made once with Finder by `tools/make_dmg_template.sh`), so CI needs no Finder scripting; CI checks the layout files are in the image.
+- README: the same steps with a picture.
+
 ## 0.2.0 (2026-11-18)
 
 - New arrangement "所有圈+所有电池" for voltage profiles and dQ/dV: every selected cycle of every cell in one panel (colour = cell, line style = cycle; shades of the cell colour when there are more than 4 cycles).
