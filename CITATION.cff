@@ -4,7 +4,7 @@ title: "GalvaPlot: drag-and-drop plotting for battery test files (LAND .cex, New
 type: software
 authors:
   - alias: "690463389xkc-collab"
-version: "0.2.0"
+version: "0.2.1"
 date-released: "2026-11-18"
 license: MIT
 repository-code: "https://github.com/690463389xkc-collab/galvaplot"

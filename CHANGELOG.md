@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 (2026-11-18)
 
 - macOS disk image: the window now has a background with a drag-to-Applications arrow and the first-launch steps (press "Done", not "Move to Trash"; then System Settings → Privacy & Security → Open Anyway). The layout comes from a template image (`assets/dmg/template.dmg`, made once with Finder by `tools/make_dmg_template.sh`), so CI needs no Finder scripting; CI checks the layout files are in the image.
 - README: the same steps with a picture.
