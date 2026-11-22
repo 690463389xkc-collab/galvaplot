@@ -601,6 +601,25 @@ class TestVectorFontsRender(Tmp):
         im = np.asarray(Image.open(png).convert("L"))
         return int((im < 128).sum())
 
+    def _report(self, src, out, args, ratio):
+        """Print what is needed to understand a failure on a CI machine."""
+        import subprocess
+        import numpy as np
+        from PIL import Image
+        im = np.asarray(Image.open(out).convert("L"))
+        print(f"\n--- {os.path.basename(src)}: ink ratio {ratio:.2f}; image {im.shape}, "
+              f"min {im.min()}, pixels < 250: {(im < 250).sum()}")
+        with open(src, "rb") as f:
+            data = f.read()
+        lines = data.split(b"\n")
+        print("--- head:", b" | ".join(lines[:14]).decode("latin-1")[:1500])
+        for key in (b"%%BoundingBox", b"/FontType", b"/FontName", b"/sfnts", b"/CharStrings", b"glyphshow", b"findfont"):
+            hits = [ln for ln in lines if key in ln][:4]
+            print(f"--- {key.decode()} x{sum(1 for ln in lines if key in ln)}:", b" | ".join(hits).decode("latin-1")[:400])
+        verbose = [a for a in args if a != "-q"]
+        r = subprocess.run(verbose, capture_output=True, text=True, timeout=120)
+        print("--- gs:", (r.stdout + r.stderr)[-3000:])
+
     def test_chinese_and_latin_text(self):
         import subprocess
         import matplotlib
@@ -630,6 +649,8 @@ class TestVectorFontsRender(Tmp):
                     self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
                     self.assertNotIn("Error", p.stdout + p.stderr)
                     ratio = self._ink(out) / self._ink(ref)
+                    if not 0.8 < ratio < 1.35:
+                        self._report(src, out, args, ratio)
                     # missing glyphs drop this to about 0.5; Type 3 glyphs come out slightly heavier
                     self.assertGreater(ratio, 0.8, f"{ext}: text ink {ratio:.2f} of the PNG")
                     self.assertLess(ratio, 1.35, f"{ext}: text ink {ratio:.2f} of the PNG")
