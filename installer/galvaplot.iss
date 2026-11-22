@@ -35,7 +35,9 @@ UninstallDisplayName={#MyAppName}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
-CloseApplications=yes
+; force: if GalvaPlot does not close when asked, end it instead of cancelling the installation
+; (a silent in-app update otherwise rolled back when the app was still quitting)
+CloseApplications=force
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -62,6 +64,38 @@ Filename: "{app}\{#MyAppExe}"; Flags: nowait runasoriginaluser; Check: ShouldRel
 function ShouldRelaunch: Boolean;
 begin
   Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;
+
+{ True while a process named GalvaPlot.exe is running (WMI); False if that cannot be checked }
+function GalvaPlotRunning: Boolean;
+var
+  Locator, Service, Procs: Variant;
+begin
+  Result := False;
+  try
+    Locator := CreateOleObject('WbemScripting.SWbemLocator');
+    Service := Locator.ConnectServer('.', 'root\CIMV2');
+    Procs := Service.ExecQuery('SELECT ProcessId FROM Win32_Process WHERE Name = ''GalvaPlot.exe''');
+    Result := Procs.Count > 0;
+  except
+    Result := False;
+  end;
+end;
+
+{ The in-app update starts Setup /SILENT just before the app quits: give the app up to 15 s
+  to quit, so that it is not still running when Setup replaces its files. }
+function InitializeSetup: Boolean;
+var
+  I: Integer;
+begin
+  if WizardSilent then
+    for I := 1 to 60 do
+    begin
+      if not GalvaPlotRunning then
+        Break;
+      Sleep(250);
+    end;
+  Result := True;
 end;
 
 [UninstallDelete]

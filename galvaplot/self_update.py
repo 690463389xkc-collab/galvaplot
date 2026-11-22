@@ -170,8 +170,10 @@ def setup_log_path():
 
 def windows_command(package, relaunch=True):
     """Command line for a silent in-app update with the Inno Setup installer."""
+    # /FORCECLOSEAPPLICATIONS: if this app has not quit yet when Setup checks, Setup ends it
+    # instead of cancelling (with /SUPPRESSMSGBOXES the "could not close" question means Abort)
     cmd = [package, "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS",
-           f"/LOG={setup_log_path()}"]
+           "/FORCECLOSEAPPLICATIONS", f"/LOG={setup_log_path()}"]
     if relaunch:
         cmd.append("/RELAUNCH=1")
     return cmd

@@ -518,6 +518,7 @@ class TestSelfUpdate(unittest.TestCase):
         cmd = SU.windows_command(r"C:\Temp\GalvaPlot-9.0.0-Windows-Setup.exe")
         self.assertEqual(cmd[0], r"C:\Temp\GalvaPlot-9.0.0-Windows-Setup.exe")
         self.assertIn("/SILENT", cmd)
+        self.assertIn("/FORCECLOSEAPPLICATIONS", cmd)
         self.assertIn("/RELAUNCH=1", cmd)
         self.assertIn("/LOG=" + SU.setup_log_path(), cmd)                       # Inno Setup writes a log
         self.assertNotIn("/RELAUNCH=1", SU.windows_command("x.exe", relaunch=False))

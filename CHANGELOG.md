@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2 (2026-11-22)
+
+- Fix (Windows in-app update): Setup was started while the app was still quitting; when Restart Manager could not close it, the silent Setup answered its own "could not close applications" question with Abort and rolled back, so the app closed without updating (seen in the CI drill, depending on timing). Setup now waits up to 15 s for GalvaPlot.exe to exit when run silently and force-closes it otherwise (`CloseApplications=force`); the app also passes `/FORCECLOSEAPPLICATIONS`. This also fixes updates started from 0.3.0 / 0.3.1, because the new Setup does the waiting.
+- CI: the in-app update drills now install the package just built (`GALVAPLOT_UPDATE_FILE`, same code path as a real update), on Windows twice, and block the release if they fail; "Installation process succeeded" is matched case-sensitively (it used to match "Uninstallation process succeeded" after a rollback).
+
 ## 0.3.1 (2026-11-22)
 
 - "保存图片…" (and "保存此子图…") can write EPS. Fonts are embedded as TrueType (Type 42, text stays editable), like in PDF.

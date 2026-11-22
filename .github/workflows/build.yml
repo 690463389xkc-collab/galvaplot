@@ -96,55 +96,50 @@ jobs:
           if ($r.ExitCode -ne 0) { exit 1 }
           $u = Start-Process -FilePath (Join-Path $dir "unins000.exe") -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES" -Wait -PassThru
           if ($u.ExitCode -ne 0) { Write-Error "uninstaller exit code $($u.ExitCode)"; exit 1 }
-      # In-app update ("立即更新"): install this build, let it update itself to the newest published
-      # release (it pretends to be 0.0.1), check the installed version changed. Network-dependent,
-      # so it does not block the release; read its log.
+      # In-app update ("立即更新"): install this build, then let the installed app update itself
+      # with the Setup just built (same code path as a real update: file:// "download", SHA-256
+      # check, Setup /SILENT while the app quits). Twice, because the old failure depended on timing.
       - name: Test in-app update (Windows)
         if: runner.os == 'Windows'
-        continue-on-error: true
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
           GALVAPLOT_SELFTEST_UPDATE: "1"
-          GALVAPLOT_FAKE_VERSION: "0.0.1"
           GALVAPLOT_UPDATE_NO_RELAUNCH: "1"
-          GALVAPLOT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $setup = "dist\GalvaPlot-${{ steps.ver.outputs.version }}-Windows-Setup.exe"
+          $setup = (Resolve-Path "dist\GalvaPlot-${{ steps.ver.outputs.version }}-Windows-Setup.exe").Path
+          $env:GALVAPLOT_UPDATE_FILE = $setup
           $i = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CURRENTUSER", "/NORESTART" -Wait -PassThru
           if ($i.ExitCode -ne 0) { Write-Error "installer exit code $($i.ExitCode)"; exit 1 }
           $key = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{9BDACDDD-97AA-49AD-8DC8-2F80B081866D}_is1"
           $dir = (Get-ItemProperty $key).InstallLocation
-          $before = (Get-ItemProperty $key).DisplayVersion
-          $latest = (Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:GALVAPLOT_GITHUB_TOKEN" } "https://api.github.com/repos/${{ github.repository }}/releases/latest").tag_name.TrimStart("v")
-          Write-Host "installed $before in $dir; newest published release: $latest"
+          $exe = Join-Path $dir "GalvaPlot.exe"
           $updLog = Join-Path $env:TEMP "galvaplot_update.log"
           $setupLog = Join-Path $env:TEMP "galvaplot_setup.log"
-          Remove-Item $updLog, $setupLog -ErrorAction SilentlyContinue
-          $exe = Join-Path $dir "GalvaPlot.exe"
-          $exeBefore = (Get-Item $exe).LastWriteTimeUtc
-          # wait for the app process only, as when a user runs it ("-Wait" would also wait for, and
-          # own, the Setup process the app starts)
-          $r = Start-Process -FilePath $exe -PassThru
-          $null = $r.Handle
-          $r.WaitForExit()
-          Write-Host "app exit code $($r.ExitCode)"
-          for ($t = 0; $t -lt 150; $t++) {
-            Start-Sleep -Seconds 2
-            if ((Test-Path $setupLog) -and (Select-String -Path $setupLog -Pattern "Log closed" -Quiet)) { break }
+          $failed = $false
+          foreach ($round in 1, 2) {
+            Remove-Item $updLog, $setupLog -ErrorAction SilentlyContinue
+            # wait for the app process only, as when a user runs it ("-Wait" would also wait for,
+            # and own, the Setup process the app starts)
+            $r = Start-Process -FilePath $exe -PassThru
+            $null = $r.Handle
+            $r.WaitForExit()
+            for ($t = 0; $t -lt 90; $t++) {
+              Start-Sleep -Seconds 2
+              if ((Test-Path $setupLog) -and (Select-String -Path $setupLog -Pattern "Log closed" -Quiet)) { break }
+            }
+            Write-Host "==== round $round: app exit code $($r.ExitCode)"
+            Write-Host "---- updater log"
+            Get-Content $updLog -ErrorAction SilentlyContinue
+            Write-Host "---- setup log"
+            Get-Content $setupLog -ErrorAction SilentlyContinue
+            # case-sensitive: "Uninstallation process succeeded" (a rollback) must not count
+            $ok = (Test-Path $setupLog) -and (Select-String -Path $setupLog -CaseSensitive -Pattern "Installation process succeeded" -Quiet) -and -not (Select-String -Path $setupLog -Pattern "canceled the installation" -Quiet)
+            Write-Host "round ${round}: setup succeeded: $ok"
+            if ($r.ExitCode -ne 0 -or -not $ok) { $failed = $true }
           }
-          Write-Host "---- processes"
-          Get-Process | Where-Object { $_.Name -like "*Setup*" -or $_.Name -like "GalvaPlot*" -or $_.Name -like "is-*" } | Format-Table Id, Name, StartTime -AutoSize | Out-String | Write-Host
-          Write-Host "---- updater log"
-          Get-Content $updLog -ErrorAction SilentlyContinue
-          Write-Host "---- setup log"
-          Get-Content $setupLog -ErrorAction SilentlyContinue
-          $now = (Get-ItemProperty $key).DisplayVersion
-          $exeAfter = (Get-Item $exe).LastWriteTimeUtc
-          $ok = (Test-Path $setupLog) -and (Select-String -Path $setupLog -Pattern "Installation process succeeded" -Quiet)
-          Write-Host "installed version after the update: $now; exe time $exeBefore -> $exeAfter; setup succeeded: $ok"
           Start-Process -FilePath (Join-Path $dir "unins000.exe") -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES" -Wait
-          if ($r.ExitCode -ne 0 -or -not $ok -or $now -ne $latest) { exit 1 }
+          if ($failed) { exit 1 }
 
       # ---------------- macOS: drag-to-install disk image ----------------
       - name: Self-test packaged app (macOS)
@@ -174,27 +169,25 @@ jobs:
           cat selftest_dmg/selftest.txt
       - name: Test in-app update (macOS)
         if: runner.os == 'macOS'
-        continue-on-error: true
         env:
           QT_QPA_PLATFORM: offscreen
           GALVAPLOT_SELFTEST_UPDATE: "1"
-          GALVAPLOT_FAKE_VERSION: "0.0.1"
           GALVAPLOT_UPDATE_NO_RELAUNCH: "1"
-          GALVAPLOT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           d="$RUNNER_TEMP/update_test"
           mkdir -p "$d"
           ditto dist/GalvaPlot.app "$d/GalvaPlot.app"
+          touch "$d/GalvaPlot.app/Contents/OLD_COPY"
+          export GALVAPLOT_UPDATE_FILE="$(ls "$PWD"/dist/GalvaPlot-*-macOS-AppleSilicon.dmg)"
           log="$(python -c 'import tempfile; print(tempfile.gettempdir())')/galvaplot_update.log"
           rm -f "$log"
           "$d/GalvaPlot.app/Contents/MacOS/GalvaPlot"
           for i in $(seq 1 180); do grep -q -E "^done|failed|keeping" "$log" 2>/dev/null && break; sleep 1; done
           cat "$log" || true
-          latest="$(curl -s -H "Authorization: Bearer $GALVAPLOT_GITHUB_TOKEN" "https://api.github.com/repos/${{ github.repository }}/releases/latest" | python -c 'import json,sys; print(json.load(sys.stdin)["tag_name"].lstrip("v"))')"
-          now="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$d/GalvaPlot.app/Contents/Info.plist")"
-          echo "installed version after the update: $now (newest published release: $latest)"
           xattr "$d/GalvaPlot.app"
-          test "$now" = "$latest"
+          grep -q "^done" "$log"
+          test ! -e "$d/GalvaPlot.app/Contents/OLD_COPY"           # the bundle was replaced
+          test -x "$d/GalvaPlot.app/Contents/MacOS/GalvaPlot"
 
       # ---------------- upload ----------------
       - uses: actions/upload-artifact@v4

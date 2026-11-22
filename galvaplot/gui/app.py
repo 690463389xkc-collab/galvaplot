@@ -103,10 +103,27 @@ def main(argv=None):
 def _selftest_update(app, w):
     """Test of the in-app update (CI / developer only): check GitHub, and if a newer release
     exists, download, verify and install it without dialogs. Use with GALVAPLOT_FAKE_VERSION
-    (pretend to be older) and GALVAPLOT_UPDATE_NO_RELAUNCH. Exit 0 = installer started."""
+    (pretend to be older) and GALVAPLOT_UPDATE_NO_RELAUNCH. GALVAPLOT_UPDATE_FILE=<package>
+    installs that local file instead (same code path: "download" via file://, SHA-256 check,
+    installer). Exit 0 = installer started."""
     from PySide6.QtCore import QTimer
 
     from .. import self_update
+
+    local = os.environ.get("GALVAPLOT_UPDATE_FILE")
+    if local:                    # test the package just built instead of the newest release
+        from PySide6.QtCore import QUrl
+        res = {"ok": True, "newer": True, "latest": "local build", "current": "test", "page": "",
+               "asset": {"name": os.path.basename(local), "url": QUrl.fromLocalFile(os.path.abspath(local)).toString(),
+                         "size": os.path.getsize(local), "sha256": self_update.sha256_file(local)}}
+        target, why = self_update.install_target()
+        print("UPDATE FROM FILE:", local, "->", target or why, flush=True)
+        if not target:
+            QTimer.singleShot(0, lambda: app.exit(2))
+            return
+        QTimer.singleShot(500, lambda: w.start_self_update(res, target, interactive=False))
+        QTimer.singleShot(600000, lambda: app.exit(3))
+        return
 
     def got(res):
         print("UPDATE CHECK:", {k: v for k, v in res.items() if k != "notes"}, flush=True)
