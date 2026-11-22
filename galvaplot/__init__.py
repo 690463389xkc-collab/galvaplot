@@ -1,6 +1,6 @@
 """GalvaPlot: drag-and-drop plotting for battery test files (LAND .cex, Neware .ndax)."""
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 APP_NAME = "GalvaPlot"
 APP_TITLE = "GalvaPlot · 电池数据一键作图"
 MAX_FILES = 10

@@ -146,10 +146,10 @@ python -m unittest discover -s tests -v
 ```bash
 python -m pip install pyinstaller
 pyinstaller --noconfirm galvaplot.spec                                            # 程序本体（dist/）
-bash tools/make_dmg.sh dist/GalvaPlot.app dist/GalvaPlot-0.3.0-macOS-AppleSilicon.dmg   # macOS 安装镜像
+bash tools/make_dmg.sh dist/GalvaPlot.app dist/GalvaPlot-0.3.1-macOS-AppleSilicon.dmg   # macOS 安装镜像
 ```
 
-Windows 安装包用 [Inno Setup 6](https://jrsoftware.org/isinfo.php) 制作：`ISCC.exe /DMyAppVersion=0.3.0 installer\galvaplot.iss`。
+Windows 安装包用 [Inno Setup 6](https://jrsoftware.org/isinfo.php) 制作：`ISCC.exe /DMyAppVersion=0.3.1 installer\galvaplot.iss`。
 
 发布新版本：改 `galvaplot/__init__.py` 里的版本号，推送 `v*` 标签（例如 `v0.2.0`），并在 `docs/release-notes/` 里放同名的发布说明（例如 `v0.2.0.md`）。GitHub Actions 会在 Linux 和 Windows 上跑测试，然后自动生成 Windows 安装包、Windows 免安装 zip 和 macOS dmg，并模拟用户安装后再自检一遍（Windows：静默安装 → 运行 → 卸载；macOS：挂载 dmg → 拷出程序 → 运行），全部通过才上传到 Releases。
 
@@ -179,7 +179,7 @@ tests/                  单元测试
 
 ## 引用
 
-如果 GalvaPlot 对你的研究有帮助，可以在论文的方法部分注明作图工具，例如“数据使用 GalvaPlot v0.3.0 处理和作图”。仓库页面右侧的 **Cite this repository** 提供 APA / BibTeX 格式（来自 [CITATION.cff](CITATION.cff)）。
+如果 GalvaPlot 对你的研究有帮助，可以在论文的方法部分注明作图工具，例如“数据使用 GalvaPlot v0.3.1 处理和作图”。仓库页面右侧的 **Cite this repository** 提供 APA / BibTeX 格式（来自 [CITATION.cff](CITATION.cff)）。
 
 ## 许可与声明
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1 (2026-11-22)
 
 - "保存图片…" (and "保存此子图…") can write EPS. Fonts are embedded as TrueType (Type 42, text stays editable), like in PDF.
 - Fix: PDF (since 0.1.0) and EPS with Chinese text on macOS. The Chinese font there (PingFang) has CFF outlines, which cannot be embedded as TrueType: macOS Preview still showed the text, but Ghostscript (and likely Acrobat / Illustrator) showed missing glyphs, and EPS did not open at all. Such figures now embed their fonts as Type 3. Figures without Chinese text, and Windows (Microsoft YaHei has TrueType outlines), keep Type 42. A test draws the exported PDF/EPS with Ghostscript when available (CI: Windows).
