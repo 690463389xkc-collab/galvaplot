@@ -128,7 +128,7 @@ jobs:
               Start-Sleep -Seconds 2
               if ((Test-Path $setupLog) -and (Select-String -Path $setupLog -Pattern "Log closed" -Quiet)) { break }
             }
-            Write-Host "==== round $round: app exit code $($r.ExitCode)"
+            Write-Host "==== round ${round}: app exit code $($r.ExitCode)"
             Write-Host "---- updater log"
             Get-Content $updLog -ErrorAction SilentlyContinue
             Write-Host "---- setup log"
