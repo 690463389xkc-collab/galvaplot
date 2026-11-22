@@ -340,6 +340,16 @@ class TestFigures(Tmp):
                 self.assertGreater(os.path.getsize(x), 1000)
         r = F.build("profiles", self.series, dict(cap_unit="mAh/g"))
         self.assertTrue(any("质量" in n for n in r.notes))
+        # EPS (slow with Chinese text, so only twice): with and without Chinese text
+        for o in ({"footnote": "1 M LiPF_{6}，第二行"}, {"legend": "none"}):
+            r = F.build("vt", self.series, o)
+            p = os.path.join(self.dir, "fig.eps")
+            F.save(r, p, dpi=80)
+            with open(p, "rb") as f:
+                eps = f.read()
+            self.assertTrue(eps.startswith(b"%!PS-Adobe-3.0 EPSF-3.0"))
+            self.assertIn(b"%%BoundingBox", eps)
+            self.assertIn(b"/FontType 42", eps)                     # fonts embedded as TrueType: editable text
         r = F.build("profiles", self.series, dict(p_cycles="999"))
         self.assertTrue(any("没有数据" in n for n in r.notes))
 

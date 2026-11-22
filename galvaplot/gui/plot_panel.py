@@ -7,7 +7,7 @@ import traceback
 
 from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QImage, QPixmap
-from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog, QFrame,
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog, QFrame,
                                QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMenu, QPlainTextEdit,
                                QPushButton, QSizePolicy, QSpinBox, QStackedWidget, QVBoxLayout, QWidget)
 
@@ -104,7 +104,7 @@ class PlotPanel(QWidget):
         self.copy_btn.setToolTip("复制 300 dpi 图片到剪贴板，可直接粘贴到 PPT / Word")
         self.save_btn = QPushButton("保存图片…")
         self.save_btn.setObjectName("primary")
-        self.save_btn.setToolTip("保存为 PNG / SVG / PDF / TIFF")
+        self.save_btn.setToolTip("保存为 PNG / SVG / PDF / EPS / TIFF")
         self.data_btn = QPushButton("导出数据…")
         self.data_btn.setToolTip("把这张图的数据和每个电池的逐圈数据导出为 Excel（可直接导入 Origin）")
         self.all_btn = QPushButton("一键导出全部")
@@ -699,18 +699,24 @@ class PlotPanel(QWidget):
         if not res:
             return
         path, flt = self._ask_path("保存图片", FILE_STEM[self.kind] + suffix + ".png",
-                                   "PNG 图片 (*.png);;SVG 矢量图 (*.svg);;PDF (*.pdf);;TIFF (*.tif)")
+                                   "PNG 图片 (*.png);;SVG 矢量图 (*.svg);;PDF (*.pdf);;EPS 矢量图 (*.eps);;TIFF (*.tif)")
         if not path:
             return
         ext = os.path.splitext(path)[1].lower()
-        if ext not in (".png", ".svg", ".pdf", ".tif", ".tiff"):
-            ext = {"SVG": ".svg", "PDF": ".pdf", "TIFF": ".tif"}.get(flt.split()[0] if flt else "", ".png")
+        if ext not in (".png", ".svg", ".pdf", ".eps", ".tif", ".tiff"):
+            ext = {"SVG": ".svg", "PDF": ".pdf", "EPS": ".eps", "TIFF": ".tif"}.get(flt.split()[0] if flt else "", ".png")
             path += ext
+        if ext == ".eps":     # embedding a Chinese font takes a few seconds: say so
+            self.message.emit("正在保存 EPS…（图中有中文时需要几秒）")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        QApplication.processEvents()
         try:
             F.save(res, path, dpi=int(self.opts.get("dpi") or 300))
         except Exception as e:
             self.message.emit(f"保存失败：{e}")
             return
+        finally:
+            QApplication.restoreOverrideCursor()
         self.message.emit(f"已保存：{path}")
 
     def export_data(self):

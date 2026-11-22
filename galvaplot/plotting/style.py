@@ -64,7 +64,7 @@ def rc(font_size: float = 14.0, cjk: bool = False) -> dict:
         "xtick.major.pad": 6, "ytick.major.pad": 6, "xtick.minor.visible": True, "ytick.minor.visible": True,
         "legend.frameon": False, "legend.handlelength": 2.6, "lines.linewidth": 2.0,
         "savefig.facecolor": "white", "figure.facecolor": "white", "axes.facecolor": "white",
-        "svg.fonttype": "path", "pdf.fonttype": 42,
+        "svg.fonttype": "path", "pdf.fonttype": 42, "ps.fonttype": 42,   # PDF/EPS: embedded TrueType, editable text
     }
     if latin:
         d.update({"mathtext.fontset": "custom", "mathtext.rm": latin, "mathtext.it": f"{latin}:italic",

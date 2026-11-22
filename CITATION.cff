@@ -5,7 +5,7 @@ type: software
 authors:
   - alias: "690463389xkc-collab"
 version: "0.3.0"
-date-released: "2026-11-18"
+date-released: "2026-11-22"
 license: MIT
 repository-code: "https://github.com/690463389xkc-collab/galvaplot"
 url: "https://github.com/690463389xkc-collab/galvaplot"

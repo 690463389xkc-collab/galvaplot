@@ -1,6 +1,11 @@
 # Changelog
 
-## 0.3.0 (2026-11-18)
+## Unreleased
+
+- "保存图片…" (and "保存此子图…") can write EPS; fonts are embedded as TrueType (Type 42), so the text stays editable in Illustrator and Chinese text is kept.
+- Windows in-app update: Setup writes a log (`%TEMP%\galvaplot_setup.log`); the CI update drill waits for the app process only.
+
+## 0.3.0 (2026-11-22)
 
 - In-app update: "立即更新" in the update dialog downloads the new package, checks it against the SHA-256 digest GitHub publishes for the release asset, then replaces the installed copy and reopens it. Updates installed this way carry no "downloaded from the internet" mark, so macOS / Windows do not ask for approval again (only the first install does). macOS: copies in a writable folder (also when macOS runs the app translocated); Windows: copies installed with the Setup program (silent update, `/RELAUNCH=1` reopens the app). The portable zip and source checkouts keep the download link.
 - Fix: "更多设置" in the preview's right-click menu did nothing (it built the settings panel instead of opening the dialog); GUI regression test added.
