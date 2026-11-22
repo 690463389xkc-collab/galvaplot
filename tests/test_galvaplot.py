@@ -528,5 +528,40 @@ class TestSelfUpdate(unittest.TestCase):
             self.assertEqual(f.read(), "new")
 
 
+@unittest.skipUnless(sys.platform == "darwin", "GUI check run locally (CI Linux has no display libraries)")
+class TestPreviewMenu(Tmp):
+    def test_every_menu_action_does_something(self):
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtCore import QPoint, QSettings
+        from PySide6.QtWidgets import QApplication
+        from galvaplot.gui.plot_panel import PlotPanel
+        app = QApplication.instance() or QApplication([])
+        settings = QSettings(os.path.join(self.dir, "s.ini"), QSettings.Format.IniFormat)
+        cells = [load_file(p) for p in self.demo[:2]]
+        series = [F.Series(c, f"cell {i}", PALETTE[i], "solid", 2.0) for i, c in enumerate(cells)]
+        panel = PlotPanel(settings, lambda: series, lambda: False)
+        panel.resize(900, 700)
+        panel.show()
+        panel.set_kind("profiles")
+        panel.redraw()
+        app.processEvents()
+        acts = {a.text(): a for a in panel._build_preview_menu(QPoint(5, 5)).actions() if a.text()}
+        self.assertFalse(panel.more_dlg.isVisible())
+        acts["更多设置（坐标范围、字号、图例…）"].trigger()           # used to do nothing
+        app.processEvents()
+        self.assertTrue(panel.more_dlg.isVisible())
+        panel.more_dlg.hide()
+        # the single-panel arrangement: "复制数据" puts the plotted data on the clipboard
+        panel.opts["p_arrange"] = "all"
+        panel.redraw()
+        app.processEvents()
+        centre = QPoint(panel.preview.width() // 2, panel.preview.height() // 2)
+        acts = {a.text(): a for a in panel._build_preview_menu(centre).actions() if a.text()}
+        QApplication.clipboard().setText("")
+        acts["复制数据"].trigger()
+        self.assertIn("Capacity (mAh)", QApplication.clipboard().text())
+        panel.close()
+
+
 if __name__ == "__main__":
     unittest.main()

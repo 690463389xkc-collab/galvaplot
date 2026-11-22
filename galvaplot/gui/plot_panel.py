@@ -674,7 +674,7 @@ class PlotPanel(QWidget):
         m.addAction("保存图片…", self.save_image)
         m.addAction("导出全部数据（Excel）…", self.export_data)
         m.addSeparator()
-        m.addAction("更多设置（坐标范围、字号、图例…）", self._advanced)
+        m.addAction("更多设置（坐标范围、字号、图例…）", self._show_more)
         return m
 
     # ------------------------------------------------------------ actions
