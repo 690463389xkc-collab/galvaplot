@@ -108,19 +108,33 @@ jobs:
           $before = (Get-ItemProperty $key).DisplayVersion
           $latest = (Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:GALVAPLOT_GITHUB_TOKEN" } "https://api.github.com/repos/${{ github.repository }}/releases/latest").tag_name.TrimStart("v")
           Write-Host "installed $before in $dir; newest published release: $latest"
-          $r = Start-Process -FilePath (Join-Path $dir "GalvaPlot.exe") -Wait -PassThru
+          $updLog = Join-Path $env:TEMP "galvaplot_update.log"
+          $setupLog = Join-Path $env:TEMP "galvaplot_setup.log"
+          Remove-Item $updLog, $setupLog -ErrorAction SilentlyContinue
+          $exe = Join-Path $dir "GalvaPlot.exe"
+          $exeBefore = (Get-Item $exe).LastWriteTimeUtc
+          # wait for the app process only, as when a user runs it ("-Wait" would also wait for, and
+          # own, the Setup process the app starts)
+          $r = Start-Process -FilePath $exe -PassThru
+          $null = $r.Handle
+          $r.WaitForExit()
           Write-Host "app exit code $($r.ExitCode)"
-          $now = $before
           for ($t = 0; $t -lt 150; $t++) {
             Start-Sleep -Seconds 2
-            $now = (Get-ItemProperty $key).DisplayVersion
-            if ($now -eq $latest) { break }
+            if ((Test-Path $setupLog) -and (Select-String -Path $setupLog -Pattern "Log closed" -Quiet)) { break }
           }
-          Start-Sleep -Seconds 5
-          Get-Content (Join-Path $env:TEMP "galvaplot_update.log") -ErrorAction SilentlyContinue
-          Write-Host "installed version after the update: $now"
+          Write-Host "---- processes"
+          Get-Process | Where-Object { $_.Name -like "*Setup*" -or $_.Name -like "GalvaPlot*" -or $_.Name -like "is-*" } | Format-Table Id, Name, StartTime -AutoSize | Out-String | Write-Host
+          Write-Host "---- updater log"
+          Get-Content $updLog -ErrorAction SilentlyContinue
+          Write-Host "---- setup log"
+          Get-Content $setupLog -ErrorAction SilentlyContinue
+          $now = (Get-ItemProperty $key).DisplayVersion
+          $exeAfter = (Get-Item $exe).LastWriteTimeUtc
+          $ok = (Test-Path $setupLog) -and (Select-String -Path $setupLog -Pattern "Installation process succeeded" -Quiet)
+          Write-Host "installed version after the update: $now; exe time $exeBefore -> $exeAfter; setup succeeded: $ok"
           Start-Process -FilePath (Join-Path $dir "unins000.exe") -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES" -Wait
-          if ($r.ExitCode -ne 0 -or $now -ne $latest) { exit 1 }
+          if ($r.ExitCode -ne 0 -or -not $ok -or $now -ne $latest) { exit 1 }
 
       # ---------------- macOS: drag-to-install disk image ----------------
       - name: Self-test packaged app (macOS)

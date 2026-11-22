@@ -151,10 +151,32 @@ def start_install(package, target, platform=None, relaunch=True):
         return subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
                                 start_new_session=True, close_fds=True)
     if platform == "win32":
-        cmd = [package, "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"]
-        if relaunch:
-            cmd.append("/RELAUNCH=1")
+        cmd = windows_command(package, relaunch)
+        log.write(f"update {_now()}: {subprocess.list2cmdline(cmd)}\n")
+        log.flush()
         flags = 0x00000008 | 0x00000200          # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-        return subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
-                                creationflags=flags, close_fds=True)
+        p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                             creationflags=flags, close_fds=True)
+        log.write(f"setup started, pid {p.pid}\n")
+        log.flush()
+        return p
     raise OSError("unsupported platform")
+
+
+def setup_log_path():
+    """Where the Windows Setup program writes its own log during an in-app update."""
+    return os.path.join(tempfile.gettempdir(), "galvaplot_setup.log")
+
+
+def windows_command(package, relaunch=True):
+    """Command line for a silent in-app update with the Inno Setup installer."""
+    cmd = [package, "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS",
+           f"/LOG={setup_log_path()}"]
+    if relaunch:
+        cmd.append("/RELAUNCH=1")
+    return cmd
+
+
+def _now():
+    import datetime
+    return datetime.datetime.now().isoformat(timespec="seconds")
