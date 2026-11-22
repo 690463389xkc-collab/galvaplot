@@ -37,6 +37,34 @@ def font_families():
     return fam
 
 
+_CFF_CACHE = {}
+
+
+def outline_is_cff(family) -> bool:
+    """True if the font file behind `family` has CFF (PostScript) outlines, e.g. macOS
+    PingFang. Such fonts cannot be embedded as TrueType (Type 42) in PDF/EPS: Ghostscript,
+    Acrobat and Illustrator then show missing or wrong glyphs, although macOS Preview copes."""
+    if family in _CFF_CACHE:
+        return _CFF_CACHE[family]
+    cff = False
+    try:
+        from fontTools.ttLib import TTFont
+        from matplotlib import font_manager
+        path = font_manager.findfont(font_manager.FontProperties(family=family), fallback_to_default=False)
+        kw = {"fontNumber": 0} if path.lower().endswith((".ttc", ".otc")) else {}
+        with TTFont(path, lazy=True, **kw) as f:
+            cff = "CFF " in f or "CFF2" in f
+    except Exception:
+        cff = False
+    _CFF_CACHE[family] = cff
+    return cff
+
+
+def cjk_family(families):
+    """The Chinese font matplotlib falls back to for CJK characters (first CJK family)."""
+    return next((f for f in families if f in _CJK), None)
+
+
 def has_cjk(text) -> bool:
     return any(ord(ch) >= 0x2E80 for ch in str(text or ""))
 

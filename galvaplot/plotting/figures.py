@@ -78,6 +78,7 @@ class FigureResult:
     rc: dict
     all_panels: list = field(default_factory=list)   # [(key, title)] of every possible sub-plot
     axes: list = field(default_factory=list)         # visible axes, same order as panels
+    cjk: bool = False                                # figure text contains Chinese
 
 
 MAX_PANELS = 12
@@ -787,6 +788,7 @@ def build(kind, series, opts) -> FigureResult:
             return FigureResult(fig, [], ["请先添加数据文件"], rc(o["font_size"]))
         res = BUILDERS[kind](series, o)
     res.axes = [ax for ax in res.fig.axes if ax.get_visible()]
+    res.cjk = cjk
     return res
 
 
@@ -822,6 +824,20 @@ def render_png(res: FigureResult, dpi: float) -> bytes:
     return buf.getvalue()
 
 
+def vector_rc(res: FigureResult, path: str) -> dict:
+    """rcParams for saving. PDF/EPS embed fonts as TrueType (Type 42: text stays editable),
+    except when the figure has Chinese text set in a font with CFF outlines (macOS PingFang):
+    those glyphs are embedded as Type 3, which every viewer draws correctly."""
+    rc = dict(res.rc)
+    if path.lower().endswith((".pdf", ".eps", ".ps")) and res.cjk:
+        from .style import cjk_family, outline_is_cff
+        fam = rc.get("font.family") or []
+        cj = cjk_family(fam if isinstance(fam, (list, tuple)) else [fam])
+        if cj and outline_is_cff(cj):
+            rc["pdf.fonttype"] = rc["ps.fonttype"] = 3
+    return rc
+
+
 def save(res: FigureResult, path: str, dpi: int = 300):
-    with matplotlib.rc_context(res.rc):
+    with matplotlib.rc_context(vector_rc(res, path)):
         res.fig.savefig(path, dpi=dpi)

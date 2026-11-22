@@ -349,7 +349,10 @@ class TestFigures(Tmp):
                 eps = f.read()
             self.assertTrue(eps.startswith(b"%!PS-Adobe-3.0 EPSF-3.0"))
             self.assertIn(b"%%BoundingBox", eps)
-            self.assertIn(b"/FontType 42", eps)                     # fonts embedded as TrueType: editable text
+            # TrueType (editable) unless Chinese text is set in a CFF font (macOS PingFang): Type 3
+            from galvaplot.plotting.style import cjk_family, outline_is_cff
+            cff = r.cjk and outline_is_cff(cjk_family(r.rc["font.family"]) or "")
+            self.assertIn(b"/FontType 3" if cff else b"/FontType 42", eps)
         r = F.build("profiles", self.series, dict(p_cycles="999"))
         self.assertTrue(any("没有数据" in n for n in r.notes))
 
@@ -581,6 +584,55 @@ class TestPreviewMenu(Tmp):
         self.assertIn("Capacity (mAh)", QApplication.clipboard().text())
         panel.close()
 
+
+def _ghostscript():
+    gs = os.environ.get("GALVAPLOT_GS") or shutil.which("gs")
+    return gs if gs and os.path.exists(gs) else None
+
+
+@unittest.skipUnless(_ghostscript(), "needs Ghostscript (set GALVAPLOT_GS)")
+class TestVectorFontsRender(Tmp):
+    """PDF/EPS drawn by Ghostscript must show as much text "ink" as the PNG: catches fonts
+    that only macOS Preview can display (missing Chinese glyphs elsewhere)."""
+
+    def _ink(self, png):
+        from PIL import Image
+        import numpy as np
+        im = np.asarray(Image.open(png).convert("L"))
+        return int((im < 128).sum())
+
+    def test_chinese_and_latin_text(self):
+        import subprocess
+        import matplotlib
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        from matplotlib.figure import Figure
+        from galvaplot.plotting.style import rc
+        for cjk, text in ((True, "电压 AlCl$_{3}$ 第 1 圈 Li$^{+}$"), (False, "Voltage AlCl$_{3}$ Li$^{+}$ 1.0")):
+            params = rc(14, cjk)
+            with matplotlib.rc_context(params):          # as in figures.build()
+                fig = Figure(figsize=(5, 1.2))
+                FigureCanvasAgg(fig)
+                t = fig.text(0.04, 0.35, text, fontsize=26)
+                F._fix_cjk_math([t])
+            res = F.FigureResult(fig, [], [], params)
+            res.cjk = cjk
+            ref = os.path.join(self.dir, "ref.png")
+            F.save(res, ref, dpi=100)
+            for ext in ("pdf", "eps"):
+                with self.subTest(cjk=cjk, fmt=ext):
+                    src = os.path.join(self.dir, f"t.{ext}")
+                    out = os.path.join(self.dir, f"t_{ext}.png")
+                    F.save(res, src, dpi=100)
+                    args = [_ghostscript(), "-q", "-dSAFER", "-dBATCH", "-dNOPAUSE", "-sDEVICE=pnggray", "-r100",
+                            "-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-sOutputFile=" + out]
+                    args += (["-dEPSCrop"] if ext == "eps" else []) + [src]
+                    p = subprocess.run(args, capture_output=True, text=True, timeout=120)
+                    self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+                    self.assertNotIn("Error", p.stdout + p.stderr)
+                    ratio = self._ink(out) / self._ink(ref)
+                    # missing glyphs drop this to about 0.5; Type 3 glyphs come out slightly heavier
+                    self.assertGreater(ratio, 0.8, f"{ext}: text ink {ratio:.2f} of the PNG")
+                    self.assertLess(ratio, 1.35, f"{ext}: text ink {ratio:.2f} of the PNG")
 
 if __name__ == "__main__":
     unittest.main()

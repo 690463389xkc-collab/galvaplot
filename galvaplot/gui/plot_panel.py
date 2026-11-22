@@ -706,8 +706,6 @@ class PlotPanel(QWidget):
         if ext not in (".png", ".svg", ".pdf", ".eps", ".tif", ".tiff"):
             ext = {"SVG": ".svg", "PDF": ".pdf", "EPS": ".eps", "TIFF": ".tif"}.get(flt.split()[0] if flt else "", ".png")
             path += ext
-        if ext == ".eps":     # embedding a Chinese font takes a few seconds: say so
-            self.message.emit("正在保存 EPS…（图中有中文时需要几秒）")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         QApplication.processEvents()
         try:
