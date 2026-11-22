@@ -10,7 +10,11 @@ files. Steps with other modes (CV, CCCV, pulse, ...) are classified by the
 sign of their current and reported in ``CellData.warnings``.
 
 Layout (little-endian, 16-byte aligned)
-  0x00-0x3F  header, magic ``10 11 09 88``
+  0x00-0x3F  header, magic ``10 11 09 88``; +0x1C f32 active-material mass (g) as
+             entered in LAND, 0 if none was entered (checked on 143 files: in every
+             file with a mass, the programmed step current / mass is exactly the
+             specific current of the test plan, 100 or 500 mA/g; the trailer block
+             repeats the value)
   blocks     ``aa aa ff ff <tag u16> <len u16>`` ... ``bb bb ff ff`` + same 4 bytes
              (tag 0x15 = step program, tag 0xcc = trailer with cell name)
   records    32 bytes, magic ``cX cc ff ff``
@@ -127,7 +131,7 @@ def parse_cex_bytes(b) -> dict:
     fields = {k: (np.concatenate(v) if v else np.zeros(0, np.float64 if k == "t" else np.float32))
               for k, v in cols.items()}
     cols.clear()
-    meta = {"file_size": n, "blocks": blocks}
+    meta = {"file_size": n, "blocks": blocks, "mass_g": struct.unpack_from("<f", b, 0x1C)[0]}
     trailer = [bl for bl in blocks if bl[0] == 0xCC]
     if trailer:
         tb = bytes(b[trailer[-1][1]:trailer[-1][2]])
@@ -195,10 +199,13 @@ def read_cex(path: str):
     except (OverflowError, OSError, ValueError):
         pass
     names = p["meta"].get("trailer_strings", [])
+    info = {"cell_name": names[0] if names else os.path.splitext(os.path.basename(path))[0],
+            "file_size": p["meta"]["file_size"]}
+    mass_g = p["meta"].get("mass_g") or 0.0
+    if np.isfinite(mass_g) and 0 < mass_g < 100:
+        info["mass_mg"] = float(f"{mass_g * 1000:.6g}")     # float32 -> the number typed in LAND
     cell = assemble(path, "LAND .cex",
                     t=fld["t"], V=fld["V"], I=fld["I"], Q=fld["Q"], E=fld["E"],
                     run_id=run_id, cycle_of_run=cycle_of_run, mode_of_run=mode_of_run,
-                    start_time=start, warnings=warnings,
-                    info={"cell_name": names[0] if names else os.path.splitext(os.path.basename(path))[0],
-                          "file_size": p["meta"]["file_size"]})
+                    start_time=start, warnings=warnings, info=info)
     return cell

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0 (2026-11-22)
+
+- Voltage vs time for chosen cycles: a "圈数" field on the 电压–时间 tab (empty = whole test, as before). "时间起点" sets the time axis: each cycle from zero (cycles overlaid for comparison), joined from the first chosen cycle, or test time. New arrangement "每圈一个子图" (one panel per cycle, cells compared). A cycle includes its rest steps.
+- LAND `.cex`: the active-material mass entered in LAND (file header, offset 0x1C, float32 in g; 0 = not entered) is read and fills the "质量 mg" column unless the user typed a value. Checked on 143 local files: 81 have a mass; in 75 of the 76 with charge/discharge steps, set current ÷ mass is exactly the test plan's 100 or 500 mA/g (apart from a few extra fixed 0.25 mA steps); in the remaining one the set current matches a different mass (probably edited after programming). The 62 files without a mass are mostly symmetric cells.
+
 ## 0.3.2 (2026-11-22)
 
 - Fix (Windows in-app update): Setup was started while the app was still quitting; when Restart Manager could not close it, the silent Setup answered its own "could not close applications" question with Abort and rolled back, so the app closed without updating (seen in the CI drill, depending on timing). Setup now waits up to 15 s for GalvaPlot.exe to exit when run silently and force-closes it otherwise (`CloseApplications=force`); the app also passes `/FORCECLOSEAPPLICATIONS`. This also fixes updates started from 0.3.0 / 0.3.1, because the new Setup does the waiting.

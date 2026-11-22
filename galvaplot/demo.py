@@ -22,9 +22,11 @@ def _ocv(x):
 class CexWriter:
     """Minimal writer for the record layout documented in readers/land_cex.py."""
 
-    def __init__(self, t0_unix=1_760_000_000):
+    def __init__(self, t0_unix=1_760_000_000, mass_mg=None):
         self.buf = bytearray(b"\x10\x11\x09\x88" + bytes(60))
         self.t0 = t0_unix
+        if mass_mg:
+            struct.pack_into("<f", self.buf, 0x1C, mass_mg / 1000)     # active mass, g
 
     def step(self, mode, cycle, step_no, t_ms, set_current_A, kind=0x22):
         """mode: 'rest' / 'charge' / 'discharge' or a raw mode byte; kind 0x25 = resume."""

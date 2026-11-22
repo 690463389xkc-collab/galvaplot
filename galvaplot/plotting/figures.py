@@ -33,7 +33,7 @@ DEFAULTS = dict(
     # cycling
     c_metrics=["dchg_cap", "CE"], c_from=None, c_to=None,
     # voltage-time
-    t_unit="h", t_arrange="overlay",
+    t_unit="h", t_arrange="overlay", t_cycles="", t_zero="cycle",
     # dQ/dV
     d_cycles="2", d_show="both", d_dv_mV=5.0, d_smooth=5, d_arrange="by_cycle",
 )
@@ -624,42 +624,162 @@ def fig_cycling(series, opts):
 TIME_DIV = {"s": 1.0, "min": 60.0, "h": 3600.0, "d": 86400.0}
 
 
+T_ZERO = {"cycle": "每圈从 0 开始", "first": "从所选第一圈开始", "test": "测试开始"}
+
+
+def vt_segments(cell, cycles, zero, split=False):
+    """Pieces of the voltage–time curve of one cell: ([(cycles, point indices, t0 in s)], missing).
+
+    No cycles: the whole test. zero = "cycle": each cycle timed from its own first point;
+    "first": from the first selected cycle; "test": from the start of the test. With "first" /
+    "test" consecutive cycles are joined into one piece unless split=True (one piece per cycle)."""
+    if not cycles:
+        return [(None, np.arange(len(cell.t)), 0.0)], []
+    pts = {c: A.cycle_points(cell, c) for c in cycles}
+    missing = [c for c in cycles if pts[c] is None]
+    have = [c for c in cycles if pts[c] is not None]
+    if not have:
+        return [], missing
+    t_first = float(cell.t[pts[min(have)][0]]) if zero == "first" else 0.0
+    if zero == "cycle" or split:
+        return [([c], pts[c], float(cell.t[pts[c][0]]) if zero == "cycle" else t_first) for c in have], missing
+    pieces = []
+    for c in sorted(have):
+        idx = pts[c]
+        if pieces and pieces[-1][1][-1] + 1 == idx[0]:
+            pieces[-1] = (pieces[-1][0] + [c], np.r_[pieces[-1][1], idx], t_first)
+        else:
+            pieces.append(([c], idx, t_first))
+    return pieces, missing
+
+
+def _cycles_name(cs):
+    if not cs:
+        return ""
+    return f"cycle {cs[0]}" if len(cs) == 1 else f"cycles {cs[0]}–{cs[-1]}"
+
+
 def fig_vt(series, opts):
     notes, panels = [], []
-    by_cell = opts["t_arrange"] == "by_cell"
-    allp = []
-    if by_cell:
-        series, allp = select_panels(series, lambda x: "cell:" + x.cell.path, lambda x: x.label, opts, notes)
-    n = len(series) if by_cell else 1
-    fig, axes, rows, cols = new_figure(max(n, 1), opts)
+    cycles = parse_cycles(opts.get("t_cycles"))
+    zero = opts.get("t_zero", "cycle") if cycles else "test"
+    if zero not in T_ZERO:
+        zero = "cycle"
+    arrange = opts["t_arrange"]
+    if arrange == "by_cycle" and not cycles:
+        arrange = "overlay"
+        notes.append("“每圈一个子图”要先填圈数；现在画的是整个测试")
     u = opts["t_unit"]
+    div = TIME_DIV[u]
     xl = T(opts, f"Time ({u})", f"时间 ({u})")
     yl = T(opts, "Voltage (V)", "电压 (V)")
-    targets = list(zip(axes, series)) if by_cell else [(axes[0], s) for s in series]
-    pdata = {"title": "", "xlabel": xl, "ylabel": yl, "curves": []}
-    for ax, s in targets:
-        x = s.cell.t / TIME_DIV[u]
-        xd, yd = A.decimate(x, s.cell.V, 8000)
-        kw = line_kw(s, opts, lw=opts["line_width"] * 0.6)
-        if by_cell:
-            kw["ls"] = "-"      # one curve per panel: dashes would only make it harder to read
-        ax.plot(xd, yd, **kw)
-        if by_cell:
+    split = arrange == "by_cycle"
+    joined = zero != "cycle" and not split
+    lw = opts["line_width"] * (0.6 if (not cycles or (joined and len(cycles) > 5)) else 1.0)
+    state = {"thinned": False}
+    missing = []
+
+    pieces = {}
+    for s in series:
+        ps, miss = vt_segments(s.cell, cycles, zero, split)
+        pieces[id(s)] = ps
+        missing += [f"{s.label} 第 {c} 圈" for c in miss]
+    use = [s for s in series if pieces[id(s)]]
+    got = {c for s in use for cs, _, _ in pieces[id(s)] for c in (cs or [])}
+    present = [c for c in cycles if c in got]      # legend / colours only for cycles that have data
+
+    def xy(s, idx, t0, n_pieces):
+        x = (s.cell.t[idx] - t0) / div
+        n = 8000 if n_pieces <= 1 else max(1500, 8000 // n_pieces)
+        if len(x) > n:
+            state["thinned"] = True
+        return A.decimate(x, s.cell.V[idx], n)
+
+    def name(s, cs):
+        return f"{s.label} | {_cycles_name(cs)}" if cs else s.label
+
+    handles, labels = [], []
+    if arrange == "by_cycle":
+        cyc_p, allp = select_panels(cycles, lambda c: f"cycle:{c}", lambda c: cycle_title(opts, c), opts, notes)
+        fig, axes, rows, cols = new_figure(max(len(cyc_p), 1), opts)
+        for ax, c in zip(axes, cyc_p):
+            pdata = {"title": cycle_title(opts, c), "xlabel": xl, "ylabel": yl, "curves": []}
+            for s in use:
+                for cs, idx, t0 in pieces[id(s)]:
+                    if cs == [c]:
+                        xd, yd = xy(s, idx, t0, 1)
+                        ax.plot(xd, yd, **line_kw(s, opts, lw=lw))
+                        pdata["curves"].append((s.label, xd, yd))
+            ax.set_title(cycle_title(opts, c))
+            panels.append(pdata)
+        handles = [legend_line(s, opts) for s in use]
+        labels = [rich(s.label) for s in use]
+    elif arrange == "by_cell":
+        cells_p, allp = select_panels(use or list(series), lambda x: "cell:" + x.cell.path, lambda x: x.label,
+                                      opts, notes)
+        fig, axes, rows, cols = new_figure(max(len(cells_p), 1), opts)
+        several = zero == "cycle" and len(present) > 1
+        colors = dict(zip(present, ramp(len(present)))) if several else {}
+        for ax, s in zip(axes, cells_p):
+            pdata = {"title": s.label, "xlabel": xl, "ylabel": yl, "curves": []}
+            ps = pieces.get(id(s), [])
+            for cs, idx, t0 in ps:
+                xd, yd = xy(s, idx, t0, len(ps))
+                kw = line_kw(s, opts, lw=lw)
+                kw["ls"] = "-"      # one cell per panel: dashes would only make it harder to read
+                if several:
+                    kw["color"] = colors[cs[0]]
+                ax.plot(xd, yd, **kw)
+                pdata["curves"].append((name(s, cs), xd, yd))
             ax.set_title(rich(s.label), fontsize=13.5 * opts["font_size"] / 14)
-            panels.append({"title": s.label, "xlabel": xl, "ylabel": yl, "curves": [(s.label, xd, yd)]})
-        else:
-            pdata["curves"].append((s.label, xd, yd))
-    if not by_cell:
+            panels.append(pdata)
+        if several:
+            handles = [Line2D([], [], color=colors[c], lw=lw) for c in present]
+            labels = [cycle_title(opts, c) for c in present]
+    else:
+        allp = []
+        fig, axes, rows, cols = new_figure(1, opts)
+        ax = axes[0]
+        title = cycle_title(opts, cycles[0]) if len(cycles) == 1 else ""
+        pdata = {"title": title, "xlabel": xl, "ylabel": yl, "curves": []}
+        several = zero == "cycle" and len(present) > 1
+        styles = dict(zip(present, cycle_styles(len(present)))) if several else {}
+        for s in use:
+            ps = pieces[id(s)]
+            for cs, idx, t0 in ps:
+                xd, yd = xy(s, idx, t0, len(ps))
+                kw = line_kw(s, opts, lw=lw)
+                if several:
+                    ls, f = styles[cs[0]]
+                    kw.update(color=tint(s.color, f), ls=ls)
+                ax.plot(xd, yd, **kw)
+                pdata["curves"].append((name(s, cs), xd, yd))
+        if title:
+            ax.set_title(title)
         panels.append(pdata)
+        if several:
+            handles, labels = overlay_legend(use, present, opts)
+            if len(present) > len(CYCLE_LS):
+                notes.append(f"{len(present)} 圈用同一颜色由浅到深区分（第 {present[0]} 圈最浅）")
+        else:
+            handles = [legend_line(s, opts) for s in use]
+            labels = [rich(s.label) for s in use]
     for k, ax in enumerate(axes):
         ax.set_xlabel(xl)
         if k % cols == 0:
             ax.set_ylabel(yl)
+    if arrange == "by_cycle":
+        _share_y(axes, cols)
     apply_limits(axes, opts)
-    handles = [] if by_cell else [legend_line(s, opts) for s in series]
-    labels = [] if by_cell else [rich(s.label) for s in series]
     finalize(fig, axes, handles, labels, opts, rows)
-    notes.append("电压–时间图为显示做了抽稀（保留尖峰与转折）；导出数据同为抽稀后的点")
+    if cycles:
+        notes.append({"cycle": "横轴从每圈的第一个数据点开始计时（含该圈的静置）",
+                      "first": "横轴从所选第一圈开始计时",
+                      "test": "横轴是从测试开始算起的时间"}[zero])
+    if missing:
+        notes.append("没有数据：" + "、".join(missing[:8]) + (" 等" if len(missing) > 8 else ""))
+    if state["thinned"]:
+        notes.append("电压–时间图为显示做了抽稀（保留尖峰与转折）；导出数据同为抽稀后的点")
     return FigureResult(fig, panels, notes, rc(opts["font_size"], opts.get("_cjk", False)), allp)
 
 

@@ -23,14 +23,14 @@
 |---|---|
 | **充放电曲线** | 指定圈数的电压–容量曲线。可以每圈一个子图、比较不同电池，也可以每个电池一个子图、比较不同圈（颜色由浅到深） |
 | **循环性能** | 放电/充电容量、库仑效率、能量效率、容量保持率、平均充/放电电压、ΔV，任选 1–8 个，自动排成多子图 |
-| **电压–时间** | 整个测试过程的电压曲线，可叠加或每个电池一个子图，用来检查异常 |
+| **电压–时间** | 整个测试过程的电压曲线，用来检查异常；也可以只画指定的几圈（每圈从 0 开始计时叠加比较，或按先后连起来）。可叠加、每个电池一个子图或每圈一个子图 |
 | **dQ/dV** | 指定圈数的微分容量曲线，可调电压间隔和平滑 |
 
 - **最多 10 个文件**同时对比，蓝电和新威的文件可以混在一起；支持直接拖入整个文件夹
 - **曲线名称可随意改**：文件名再乱也没关系，双击改成图例里想要的名字；“精简名称”可以一键去掉日期和所有文件都有的部分
 - 下标、上标不用学 LaTeX：`AlCl_{3}` → AlCl₃，`Li^{+}` → Li⁺
 - 颜色、线型逐条可调（平行样可以同色、不同线型）
-- 容量单位：mAh、mAh/g（填活性物质质量；新威文件里设置过的质量会**自动读入**）、mAh/cm²（填面积）、相对参考圈的 %
+- 容量单位：mAh、mAh/g（填活性物质质量；蓝电、新威文件里设置过的质量会**自动读入**）、mAh/cm²（填面积）、相对参考圈的 %
 - 充放电曲线和 dQ/dV 有三种排布：每圈一个子图、每个电池一个子图、**所有圈+所有电池**（画在一张图里，颜色区分电池，线型区分圈数）
 - 图下方可写**测试条件**（正极、电解液、电流密度…），每张图都带上
 - 图中文字可选**英文或中文**
@@ -88,7 +88,7 @@ Intel 芯片的 Mac 和 Linux 暂时没有安装包，请用下面的“从源�
 ## 三步出图
 
 1. 把 `.cex` / `.ndax` 文件拖进窗口（或点“添加文件…”）。没有数据可以先点“示例数据”试试。
-2. 在左侧双击修改名称；需要比容量就填“质量 mg”（新威文件里设置过质量的会自动填好）。
+2. 在左侧双击修改名称；需要比容量就填“质量 mg”（蓝电、新威文件里设置过质量的会自动填好）。
 3. 在右侧选图的类型和圈数，点“复制图片”粘贴到 PPT，或“保存图片…”。
 
 ## 计算方法（请在论文/组会中按需说明）
@@ -109,7 +109,7 @@ Intel 芯片的 Mac 和 Linux 暂时没有安装包，请用下面的“从源�
 
 ## 支持的文件
 
-- **蓝电 `.cex` 源文件**。`.icex` 是索引文件，不含数据，请拖同名的 `.cex`。
+- **蓝电 `.cex` 源文件**。`.icex` 是索引文件，不含数据，请拖同名的 `.cex`。在蓝电软件里填过的活性物质质量会自动读入（文件头里以 g 为单位的数，没填时为 0：在 76 个填了质量、有充放电工步的参考文件中，75 个的设定电流 ÷ 这个质量正好是测试方案的 100 mA/g 或 500 mA/g，据此确定含义和单位；例外的 1 个，设定电流对应的是另一个质量），可以在表格里修改。
 - **新威 `.ndax` 源文件**（BTS 8.x 写出的版本，内部格式 v17）。旧版 `.nda` 和其他版本的 `.ndax` 暂不支持，程序会提示；可以在 BTSDA 里导出 Excel 再拖进来。辅助通道（温度等）暂不读取。在测试软件里设置过的活性物质质量会自动读入（来自工步文件 `Step.xml` 的 `SCQ` 项，按 µg 换算为 mg：在 15 个设置了质量的参考文件上，按这个单位换算后程序设定的电流都正好是 100 mA/g 或 200 mA/g，据此确定单位），可以在表格里修改。
 - 蓝电软件导出的 **Excel / CSV / TXT**（实验功能）：程序按表头自动识别“电压、电流、时间、容量、循环号、工步号、工步状态”等列，中英文表头都可以，单位从表头读取（V/mV、A/mA/μA、Ah/mAh、s/min/h）。请抽查几个循环的容量是否与蓝电软件一致。
 
@@ -191,4 +191,4 @@ tests/                  单元测试
 
 ### English summary
 
-**GalvaPlot** is a small desktop app for battery researchers. Drag up to 10 raw battery-tester files (LAND `.cex`, Neware `.ndax` from BTS 8.x) into the window and get publication-style figures in one click: voltage profiles, cycling metrics (capacity, coulombic/energy efficiency, retention, average voltages, ΔV), voltage vs time and dQ/dV. Curve names are editable (with `X_{sub}` / `X^{sup}` shortcuts), figures can be copied straight into PowerPoint or saved as PNG/SVG/PDF/EPS/TIFF, and plotted data can be exported to Excel; right-click a sub-plot to copy just its data. Profiles and dQ/dV can also be drawn with all cycles of all cells in one panel, and the active mass stored in Neware files is read automatically. A "check for updates" link queries GitHub Releases (at most once a day automatically; can be switched off). Both readers are reverse-engineered and checked for internal consistency (143 `.cex`, 26 `.ndax` files), but not yet against official exports — please verify important numbers. A Windows installer (per-user, no admin rights needed), a portable Windows zip and a macOS (Apple Silicon) disk image are on the Releases page; otherwise `pip install -r requirements.txt && python -m galvaplot`. MIT licensed; not affiliated with LAND or Neware.
+**GalvaPlot** is a small desktop app for battery researchers. Drag up to 10 raw battery-tester files (LAND `.cex`, Neware `.ndax` from BTS 8.x) into the window and get publication-style figures in one click: voltage profiles, cycling metrics (capacity, coulombic/energy efficiency, retention, average voltages, ΔV), voltage vs time and dQ/dV. Curve names are editable (with `X_{sub}` / `X^{sup}` shortcuts), figures can be copied straight into PowerPoint or saved as PNG/SVG/PDF/EPS/TIFF, and plotted data can be exported to Excel; right-click a sub-plot to copy just its data. Profiles and dQ/dV can also be drawn with all cycles of all cells in one panel, voltage vs time can be limited to chosen cycles (each timed from zero, or joined), and the active mass stored in LAND and Neware files is read automatically. A "check for updates" link queries GitHub Releases (at most once a day automatically; can be switched off). Both readers are reverse-engineered and checked for internal consistency (143 `.cex`, 26 `.ndax` files), but not yet against official exports — please verify important numbers. A Windows installer (per-user, no admin rights needed), a portable Windows zip and a macOS (Apple Silicon) disk image are on the Releases page; otherwise `pip install -r requirements.txt && python -m galvaplot`. MIT licensed; not affiliated with LAND or Neware.

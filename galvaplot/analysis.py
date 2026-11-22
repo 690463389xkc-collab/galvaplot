@@ -117,6 +117,12 @@ def profile(cell: CellData, cycle: int, kind: str):
     return np.concatenate(qs), np.concatenate(vs)
 
 
+def cycle_points(cell: CellData, cycle: int):
+    """Indices of all data points of one cycle (rest steps included) in time order, or None."""
+    parts = [np.arange(s.start, s.stop) for s in cell.steps if s.cycle == cycle and s.stop > s.start]
+    return np.concatenate(parts) if parts else None
+
+
 def dqdv(Q: np.ndarray, V: np.ndarray, dv: float = 0.005, smooth: int = 3):
     """Differential capacity by voltage-step resampling.
 

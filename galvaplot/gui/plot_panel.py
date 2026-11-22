@@ -49,6 +49,14 @@ ARRANGE_TIP = ("每圈一个子图：比较不同电池\n每个电池一个子�
                "所有圈+所有电池：全部画在一张图里，颜色区分电池，线型区分圈数（超过 4 圈时用深浅区分）")
 
 
+VT_ZERO_TIP = ("填了圈数时，横轴从哪里开始计时：\n"
+               "每圈从 0 开始：各圈从 0 开始叠在一起比较\n"
+               "从所选第一圈开始：所选各圈按先后连成一条，横轴从 0 开始\n"
+               "测试开始：横轴是从测试开始算起的时间")
+VT_ARRANGE_TIP = ("叠加：所有电池画在一张图里\n每个电池一个子图\n"
+                  "每圈一个子图：要先填圈数，每圈一张图比较不同电池")
+
+
 class PlotPanel(QWidget):
     message = Signal(str)
 
@@ -341,8 +349,28 @@ class PlotPanel(QWidget):
         self._set("c_metrics", sel)
 
     def _opts_vt(self):
-        return self._row("时间单位", self._combo("t_unit", [("小时 h", "h"), ("分钟 min", "min"), ("秒 s", "s"), ("天 d", "d")]),
-                         "|", "排布", self._combo("t_arrange", [("叠加", "overlay"), ("每个电池一个子图", "by_cell")]))
+        box = QWidget()
+        v = QVBoxLayout(box)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(6)
+        cyc = self._line("t_cycles", "留空 = 整个测试", 150,
+                         "只画这几圈的电压–时间曲线，如 2 或 1, 50, 100 或 1-5；留空画整个测试")
+        self.t_zero = self._combo("t_zero", [(t, k) for k, t in F.T_ZERO.items()], VT_ZERO_TIP)
+        v.addWidget(self._row("圈数", cyc,
+                              "|", "排布", self._combo("t_arrange", [("叠加", "overlay"), ("每个电池一个子图", "by_cell"),
+                                                              ("每圈一个子图", "by_cycle")], VT_ARRANGE_TIP)))
+        self.t_zero_label = QLabel("时间起点")
+        self.t_zero_label.setToolTip(VT_ZERO_TIP)
+        v.addWidget(self._row("时间单位", self._combo("t_unit", [("小时 h", "h"), ("分钟 min", "min"), ("秒 s", "s"), ("天 d", "d")]),
+                              "|", self.t_zero_label, self.t_zero))
+        cyc.textChanged.connect(self._vt_zero_enabled)
+        self._vt_zero_enabled(cyc.text())
+        return box
+
+    def _vt_zero_enabled(self, text):
+        on = bool(F.parse_cycles(text))
+        self.t_zero.setEnabled(on)
+        self.t_zero_label.setEnabled(on)
 
     def _opts_dqdv(self):
         box = QWidget()

@@ -109,6 +109,19 @@ class TestCex(Tmp):
         tab = A.cycle_table(c)
         self.assertAlmostEqual(tab[0]["CE"], 100 * q2[-1] / q[-1], places=3)
 
+    def test_active_mass_from_header(self):
+        for mass, want in ((2.43, 2.43), (0.0, None), (12.5, 12.5)):
+            w = CexWriter(mass_mg=mass)
+            t = np.arange(0, 3600, 60.0)
+            q = 0.243 * t / 3600
+            w.step("charge", 1, 1, 0, 0.000243)
+            w.points(t * 1000, 3.5 + q, np.full(len(t), 0.000243), q / 1000, q * 3.6 / 1000)
+            p = os.path.join(self.dir, f"mass_{mass}.cex")
+            w.save(p)
+            c = load_file(p)
+            self.assertEqual(c.info.get("mass_mg"), want)
+        self.assertNotIn("mass_mg", load_file(self.demo[0]).info)        # demo files have no mass
+
     def test_ce_mode_anode(self):
         c = load_file(self.demo[0])
         a = A.cycle_table(c, "dchg/chg")[3]
@@ -373,6 +386,55 @@ class TestFigures(Tmp):
         self.assertLess(shades[0][1], shades[-1][1])
         self.assertEqual(F.tint("#000000", 1.0), "#000000")
         self.assertEqual(F.tint("#000000", 0.0), "#ffffff")
+
+    def test_voltage_time_cycles(self):
+        ser = self.series
+        cell = ser[0].cell
+        # whole test (no cycles): as before, one curve per cell starting at t = 0
+        r = F.build("vt", ser, {})
+        self.assertEqual(len(r.panels[0]["curves"]), len(ser))
+        self.assertAlmostEqual(r.panels[0]["curves"][0][1][0], 0.0)
+        # one cycle: timed from its own first point, includes its rest steps, title = cycle
+        idx = A.cycle_points(cell, 3)
+        self.assertEqual(sorted({s.cycle for s in cell.steps if s.start <= idx[0] < s.stop}), [3])
+        self.assertTrue(np.all(np.diff(idx) == 1))
+        r = F.build("vt", ser[:1], dict(t_cycles="3", t_unit="s"))
+        name, x, y = r.panels[0]["curves"][0]
+        self.assertEqual(name, "A AlCl_{3} | cycle 3")
+        self.assertAlmostEqual(x[0], 0.0)
+        self.assertAlmostEqual(x[-1], cell.t[idx[-1]] - cell.t[idx[0]], places=3)
+        self.assertEqual(r.panels[0]["title"], "Cycle 3")
+        self.assertFalse(any("抽稀" in n for n in r.notes))               # few points: nothing thinned
+        # several cycles overlaid from zero: one curve per cell and cycle
+        r = F.build("vt", ser, dict(t_cycles="1, 2, 5"))
+        self.assertEqual(len(r.panels[0]["curves"]), len(ser) * 3)
+        self.assertTrue(all(abs(c[1][0]) < 1e-9 for c in r.panels[0]["curves"]))
+        # consecutive cycles joined, timed from the first chosen cycle / from the start of the test
+        r = F.build("vt", ser[:1], dict(t_cycles="2-4, 7", t_zero="first", t_unit="s"))
+        names = [c[0] for c in r.panels[0]["curves"]]
+        self.assertEqual(names, ["A AlCl_{3} | cycles 2–4", "A AlCl_{3} | cycle 7"])
+        t2 = cell.t[A.cycle_points(cell, 2)[0]]
+        self.assertAlmostEqual(r.panels[0]["curves"][0][1][0], 0.0)
+        self.assertAlmostEqual(r.panels[0]["curves"][1][1][0], cell.t[A.cycle_points(cell, 7)[0]] - t2, places=3)
+        r = F.build("vt", ser[:1], dict(t_cycles="2-4", t_zero="test", t_unit="s"))
+        self.assertAlmostEqual(r.panels[0]["curves"][0][1][0], t2, places=3)
+        # one panel per cycle; one panel per cell with cycles coloured
+        r = F.build("vt", ser, dict(t_cycles="1, 2, 5", t_arrange="by_cycle"))
+        self.assertEqual([k for k, _ in r.all_panels], ["cycle:1", "cycle:2", "cycle:5"])
+        self.assertEqual([len(p["curves"]) for p in r.panels], [len(ser)] * 3)
+        r = F.build("vt", ser, dict(t_cycles="1, 2", t_arrange="by_cell"))
+        self.assertEqual(len(r.panels), len(ser))
+        self.assertEqual(len(r.panels[0]["curves"]), 2)
+        r = F.build("vt", ser, dict(t_arrange="by_cycle"))                 # needs cycles: falls back
+        self.assertEqual(len(r.panels), 1)
+        self.assertTrue(any("圈数" in n for n in r.notes))
+        r = F.build("vt", ser, dict(t_cycles="2, 999"))
+        self.assertTrue(any("没有数据" in n and "999" in n for n in r.notes))
+        self.assertEqual(len(r.panels[0]["curves"]), len(ser))
+        r = F.build("vt", ser, dict(t_cycles="1, 2, 999", legend="below"))      # no legend entry for 999
+        texts = [t.get_text() for lg in r.fig.legends for t in lg.get_texts()]
+        self.assertIn("Cycle 2", texts)
+        self.assertNotIn("Cycle 999", texts)
 
     def test_font_embedding_choice(self):
         from galvaplot.plotting import style as S
