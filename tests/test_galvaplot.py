@@ -349,10 +349,10 @@ class TestFigures(Tmp):
                 eps = f.read()
             self.assertTrue(eps.startswith(b"%!PS-Adobe-3.0 EPSF-3.0"))
             self.assertIn(b"%%BoundingBox", eps)
-            # TrueType (editable) unless Chinese text is set in a CFF font (macOS PingFang): Type 3
-            from galvaplot.plotting.style import cjk_family, outline_is_cff
-            cff = r.cjk and outline_is_cff(cjk_family(r.rc["font.family"]) or "")
-            self.assertIn(b"/FontType 3" if cff else b"/FontType 42", eps)
+            # the file uses the font embedding vector_rc() chose for this machine's fonts
+            want = F.vector_rc(r, p)["ps.fonttype"]
+            self.assertIn(b"/FontType %d" % want, eps)
+            self.assertNotIn(b"/FontType %d" % (45 - want), eps)
         r = F.build("profiles", self.series, dict(p_cycles="999"))
         self.assertTrue(any("没有数据" in n for n in r.notes))
 
@@ -373,6 +373,27 @@ class TestFigures(Tmp):
         self.assertLess(shades[0][1], shades[-1][1])
         self.assertEqual(F.tint("#000000", 1.0), "#000000")
         self.assertEqual(F.tint("#000000", 0.0), "#ffffff")
+
+    def test_font_embedding_choice(self):
+        from galvaplot.plotting import style as S
+        r = F.build("vt", self.series[:1], {})
+        r.rc = dict(r.rc, **{"font.family": ["DejaVu Sans"]})
+        r.cjk = False
+        self.assertEqual(F.vector_rc(r, "a.eps").get("ps.fonttype"), 42)     # DejaVu: TrueType with names
+        self.assertEqual(F.vector_rc(r, "a.pdf").get("pdf.fonttype"), 42)
+        self.assertNotIn("ps.fonttype", F.vector_rc(r, "a.png") if "ps.fonttype" not in r.rc else {})
+        from matplotlib import font_manager
+        names = {f.name for f in font_manager.fontManager.ttflist}
+        for fam in ("Kai", "Arial", "Microsoft YaHei"):       # fonts without glyph names, if present
+            if fam in names and not S.type42_ok_for_eps(fam):
+                r.rc = dict(r.rc, **{"font.family": [fam]})
+                self.assertEqual(F.vector_rc(r, "a.eps")["ps.fonttype"], 3, fam)
+        if "PingFang SC" in names:                            # CFF outlines
+            r.rc = dict(r.rc, **{"font.family": ["Arial", "PingFang SC"]})
+            r.cjk = True
+            self.assertEqual(F.vector_rc(r, "a.pdf")["pdf.fonttype"], 3)
+            self.assertEqual(F.vector_rc(r, "a.pdf")["ps.fonttype"], 3)      # matplotlib needs both
+            self.assertEqual(F.vector_rc(r, "a.eps")["ps.fonttype"], 3)
 
     def test_panel_text_and_axes(self):
         ser = self.series

@@ -3,7 +3,8 @@
 ## 0.3.1 (2026-11-22)
 
 - "保存图片…" (and "保存此子图…") can write EPS. Fonts are embedded as TrueType (Type 42, text stays editable), like in PDF.
-- Fix: PDF (since 0.1.0) and EPS with Chinese text on macOS. The Chinese font there (PingFang) has CFF outlines, which cannot be embedded as TrueType: macOS Preview still showed the text, but Ghostscript (and likely Acrobat / Illustrator) showed missing glyphs, and EPS did not open at all. Such figures now embed their fonts as Type 3. Figures without Chinese text, and Windows (Microsoft YaHei has TrueType outlines), keep Type 42. A test draws the exported PDF/EPS with Ghostscript when available (CI: Windows).
+- Fix: PDF (since 0.1.0) and EPS with Chinese text on macOS. The Chinese font there (PingFang) has CFF outlines, which cannot be embedded as TrueType: macOS Preview still showed the text, but Ghostscript (and likely Acrobat / Illustrator) showed missing glyphs, and EPS did not open at all. Such figures now embed their fonts as Type 3. Figures without Chinese text, and PDFs on Windows (Microsoft YaHei has TrueType outlines), keep Type 42.
+- EPS uses Type 42 only for fonts that have glyph names; Windows Arial and Microsoft YaHei have none, and matplotlib's EPS output then showed no text at all in Ghostscript, so EPS on Windows embeds fonts as Type 3. Found by the Ghostscript test on the Windows CI machine (it stopped the first 0.3.1 build). A test draws the exported PDF/EPS with Ghostscript when available (CI: Windows).
 - Windows in-app update: Setup writes a log (`%TEMP%\galvaplot_setup.log`); the CI update drill waits for the app process only.
 
 ## 0.3.0 (2026-11-22)

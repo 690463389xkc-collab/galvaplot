@@ -60,6 +60,30 @@ def outline_is_cff(family) -> bool:
     return cff
 
 
+_PS42_CACHE = {}
+
+
+def type42_ok_for_eps(family) -> bool:
+    """Can this font be embedded as TrueType (Type 42) in EPS? It needs TrueType outlines and
+    glyph names ('post' table format 1 or 2): matplotlib's PostScript output refers to glyphs
+    by name, and for fonts without names (Windows Arial and Microsoft YaHei, macOS Kai) the
+    text comes out blank in Ghostscript. PDF refers to glyphs by number and is not affected."""
+    if family in _PS42_CACHE:
+        return _PS42_CACHE[family]
+    ok = True
+    try:
+        from fontTools.ttLib import TTFont
+        from matplotlib import font_manager
+        path = font_manager.findfont(font_manager.FontProperties(family=family), fallback_to_default=False)
+        kw = {"fontNumber": 0} if path.lower().endswith((".ttc", ".otc")) else {}
+        with TTFont(path, lazy=True, **kw) as f:
+            ok = "glyf" in f and "post" in f and f["post"].formatType in (1.0, 2.0)
+    except Exception:
+        ok = False                   # unknown font: Type 3 is the safe choice
+    _PS42_CACHE[family] = ok
+    return ok
+
+
 def cjk_family(families):
     """The Chinese font matplotlib falls back to for CJK characters (first CJK family)."""
     return next((f for f in families if f in _CJK), None)

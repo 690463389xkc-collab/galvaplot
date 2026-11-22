@@ -825,16 +825,30 @@ def render_png(res: FigureResult, dpi: float) -> bytes:
 
 
 def vector_rc(res: FigureResult, path: str) -> dict:
-    """rcParams for saving. PDF/EPS embed fonts as TrueType (Type 42: text stays editable),
-    except when the figure has Chinese text set in a font with CFF outlines (macOS PingFang):
-    those glyphs are embedded as Type 3, which every viewer draws correctly."""
+    """rcParams for saving. PDF/EPS embed fonts as TrueType (Type 42: text stays editable in
+    Illustrator) when every font in the figure allows it, otherwise as Type 3 (drawn correctly
+    everywhere, but not editable as text):
+      PDF: fonts with CFF outlines (macOS PingFang for Chinese) need Type 3;
+      EPS: also fonts without glyph names (Windows Arial / Microsoft YaHei) need Type 3."""
     rc = dict(res.rc)
-    if path.lower().endswith((".pdf", ".eps", ".ps")) and res.cjk:
-        from .style import cjk_family, outline_is_cff
-        fam = rc.get("font.family") or []
-        cj = cjk_family(fam if isinstance(fam, (list, tuple)) else [fam])
-        if cj and outline_is_cff(cj):
+    low = path.lower()
+    if not low.endswith((".pdf", ".eps", ".ps")):
+        return rc
+    from .style import cjk_family, outline_is_cff, type42_ok_for_eps
+    fam = rc.get("font.family") or []
+    fam = list(fam) if isinstance(fam, (list, tuple)) else [fam]
+    used = fam[:1]                                   # the Latin font
+    if res.cjk:
+        cj = cjk_family(fam)
+        if cj:
+            used.append(cj)
+    if low.endswith(".pdf"):
+        if any(outline_is_cff(f) for f in used):
+            # ps.fonttype too: matplotlib 3.11 fails ("bytes must be in range(0, 256)")
+            # writing a Type 3 PDF while ps.fonttype is 42
             rc["pdf.fonttype"] = rc["ps.fonttype"] = 3
+    elif not all(type42_ok_for_eps(f) for f in used):
+        rc["ps.fonttype"] = 3
     return rc
 
 
